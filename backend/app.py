@@ -9,13 +9,37 @@ import pandas as pd
 import io
 import tempfile
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-# Updated for Windows local PostgreSQL - you'll need to install PostgreSQL locally
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/bonus_calc_db')
+
+# Database Configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/bonus_calc')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# SQL Server Configuration for Performance Data
+# Replace these placeholder values with your actual SQL Server credentials
+SQL_SERVER_CONFIG = {
+    'server': os.getenv('SQL_SERVER_HOST', 'your_sql_server_host'),
+    'database': os.getenv('SQL_SERVER_DATABASE', 'your_database_name'),
+    'username': os.getenv('SQL_SERVER_USERNAME', 'your_username'),
+    'password': os.getenv('SQL_SERVER_PASSWORD', 'your_password'),
+    'driver': os.getenv('SQL_SERVER_DRIVER', '{SQL Server}'),  # or '{ODBC Driver 17 for SQL Server}'
+    'port': os.getenv('SQL_SERVER_PORT', '1433')
+}
+
+# SQL Server Connection String Template
+SQL_SERVER_CONNECTION_STRING = (
+    f"DRIVER={SQL_SERVER_CONFIG['driver']};"
+    f"SERVER={SQL_SERVER_CONFIG['server']};"
+    f"DATABASE={SQL_SERVER_CONFIG['database']};"
+    f"UID={SQL_SERVER_CONFIG['username']};"
+    f"PWD={SQL_SERVER_CONFIG['password']};"
+    f"PORT={SQL_SERVER_CONFIG['port']};"
+)
+
+# Initialize extensions
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 CORS(app)
@@ -468,26 +492,80 @@ def refresh_team_performance(team_id):
     try:
         team = Team.query.get_or_404(team_id)
         
-        # Placeholder for external SQL server queries - you can replace these with actual connections
+        # SQL Server Connection Placeholder - Uncomment and configure when ready
+        # import pyodbc
+        # try:
+        #     connection = pyodbc.connect(SQL_SERVER_CONNECTION_STRING)
+        #     cursor = connection.cursor()
+        #     
+        #     # Example SQL queries for each team - replace with your actual queries
+        #     if team_id == 1:  # Legal Team
+        #         query = """
+        #             SELECT 
+        #                 COUNT(DISTINCT e.employee_id) as total_employees,
+        #                 AVG(pr.productivity_score) as avg_productivity,
+        #                 AVG(pr.quality_score) as avg_quality,
+        #                 AVG(pr.attendance_score) as avg_attendance,
+        #                 AVG(pr.overall_score) as avg_overall
+        #             FROM performance_records pr
+        #             JOIN employees e ON pr.employee_id = e.employee_id
+        #             WHERE e.team_id = 1 
+        #             AND pr.year = 2024 
+        #             AND pr.month IN (10, 11, 12)
+        #         """
+        #     elif team_id == 2:  # Loan Team
+        #         query = """
+        #             SELECT 
+        #                 COUNT(DISTINCT e.employee_id) as total_employees,
+        #                 AVG(pr.productivity_score) as avg_productivity,
+        #                 AVG(pr.quality_score) as avg_quality,
+        #                 AVG(pr.attendance_score) as avg_attendance,
+        #                 AVG(pr.overall_score) as avg_overall
+        #             FROM performance_records pr
+        #             JOIN employees e ON pr.employee_id = e.employee_id
+        #             WHERE e.team_id = 2 
+        #             AND pr.year = 2024 
+        #             AND pr.month IN (10, 11, 12)
+        #         """
+        #     elif team_id == 3:  # Servicing Team
+        #         query = """
+        #             SELECT 
+        #                 COUNT(DISTINCT e.employee_id) as total_employees,
+        #                 AVG(pr.productivity_score) as avg_productivity,
+        #                 AVG(pr.quality_score) as avg_quality,
+        #                 AVG(pr.attendance_score) as avg_attendance,
+        #                 AVG(pr.overall_score) as avg_overall
+        #             FROM performance_records pr
+        #             JOIN employees e ON pr.employee_id = e.employee_id
+        #             WHERE e.team_id = 3 
+        #             AND pr.year = 2024 
+        #             AND pr.month IN (10, 11, 12)
+        #         """
+        #     
+        #     cursor.execute(query)
+        #     result = cursor.fetchone()
+        #     
+        #     # Process the result and return actual data
+        #     performance_data = {
+        #         'team_id': team_id,
+        #         'team_name': team.name,
+        #         'quarter': 'Q4 2024',
+        #         'total_employees': result[0],
+        #         'avg_productivity': round(result[1], 2),
+        #         'avg_quality': round(result[2], 2),
+        #         'avg_attendance': round(result[3], 2),
+        #         'avg_overall': round(result[4], 2),
+        #         'data_source': 'SQL Server'
+        #     }
+        #     
+        #     cursor.close()
+        #     connection.close()
+        #     
+        # except Exception as e:
+        #     return jsonify({'error': f'SQL Server connection failed: {str(e)}'}), 500
+        
+        # For now, return updated mock data (replace this section with actual SQL Server queries above)
         if team_id == 1:  # Legal Team
-            # PLACEHOLDER: Connect to external SQL server and run query for Legal Team
-            # Example: 
-            # connection = pyodbc.connect('DRIVER={SQL Server};SERVER=your_server;DATABASE=your_db;UID=your_user;PWD=your_password')
-            # cursor = connection.cursor()
-            # cursor.execute("""
-            #     SELECT 
-            #       COUNT(DISTINCT employee_id) as total_employees,
-            #       AVG(productivity_score) as avg_productivity,
-            #       AVG(quality_score) as avg_quality,
-            #       AVG(attendance_score) as avg_attendance,
-            #       AVG(overall_score) as avg_overall
-            #     FROM external_performance_records pr
-            #     JOIN external_employees e ON pr.employee_id = e.id
-            #     WHERE e.team_id = 1 AND pr.year = 2024 AND pr.month IN (10, 11, 12)
-            # """)
-            # result = cursor.fetchone()
-            
-            # For now, return updated mock data
             performance_data = {
                 'team_id': team_id,
                 'team_name': team.name,
@@ -497,6 +575,7 @@ def refresh_team_performance(team_id):
                 'avg_quality': 94,       # Updated value
                 'avg_attendance': 96,    # Updated value
                 'avg_overall': 93,       # Updated value
+                'data_source': 'Mock Data (Replace with SQL Server)',
                 'top_performers': [
                     {'employee_name': 'Alice Smith', 'overall_score': 98},
                     {'employee_name': 'Bob Johnson', 'overall_score': 95},
@@ -516,7 +595,6 @@ def refresh_team_performance(team_id):
             }
             
         elif team_id == 2:  # Loan Team
-            # PLACEHOLDER: Connect to external SQL server and run query for Loan Team
             performance_data = {
                 'team_id': team_id,
                 'team_name': team.name,
@@ -526,6 +604,7 @@ def refresh_team_performance(team_id):
                 'avg_quality': 90,       # Updated value
                 'avg_attendance': 94,    # Updated value
                 'avg_overall': 92,       # Updated value
+                'data_source': 'Mock Data (Replace with SQL Server)',
                 'top_performers': [
                     {'employee_name': 'David Brown', 'overall_score': 97},
                     {'employee_name': 'Eve Davis', 'overall_score': 94},
@@ -545,7 +624,6 @@ def refresh_team_performance(team_id):
             }
             
         elif team_id == 3:  # Servicing Team
-            # PLACEHOLDER: Connect to external SQL server and run query for Servicing Team
             performance_data = {
                 'team_id': team_id,
                 'team_name': team.name,
@@ -555,6 +633,7 @@ def refresh_team_performance(team_id):
                 'avg_quality': 88,       # Updated value
                 'avg_attendance': 93,    # Updated value
                 'avg_overall': 89,       # Updated value
+                'data_source': 'Mock Data (Replace with SQL Server)',
                 'top_performers': [
                     {'employee_name': 'Grace Lee', 'overall_score': 95},
                     {'employee_name': 'Henry Chen', 'overall_score': 93},
