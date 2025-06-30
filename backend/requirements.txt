@@ -8,4 +8,5 @@ Flask-Migrate==4.0.5
 Werkzeug==2.3.7
 pandas==2.1.4
 openpyxl==3.1.2
-pyodbc==4.0.39 
+pyodbc==4.0.39
+pymssql==2.2.7 
