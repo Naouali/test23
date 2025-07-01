@@ -30,13 +30,11 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Database Configuration
-# Use SQLite for simplicity - no external database server needed
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///bonus_calc.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+#####################################################################
+#                    SQL SERVER DATA RETRIEVAL                        #
+#####################################################################
 
 # SQL Server Configuration for Performance Data
-# Replace these placeholder values with your actual SQL Server credentials
 SQL_SERVER_CONFIG = {
     'server': os.getenv('SQL_SERVER_HOST', 'your_sql_server_host'),
     'database': os.getenv('SQL_SERVER_DATABASE', 'your_database_name'),
@@ -72,17 +70,14 @@ SELECT
     COUNT(CASE WHEN CFType = 'SSA' THEN 1 END) as ssa_count,
     COUNT(CASE WHEN CFType = 'Legal' THEN 1 END) as legal_count,
     COUNT(CASE WHEN CFType = 'Non-CF' THEN 1 END) as non_cf_count,
-    -- NCF calculation: count Non-CF collections where flag column = 0
     COUNT(CASE WHEN CFType = 'Non-CF' AND FlagColumn = 0 THEN 1 END) as ncf_count
-
 FROM (
     SELECT 
         ReceivedDate, 
         TotalAmount, 
         CashFlowType, 
         CollectionCategory,
-        FlagColumn,  -- Add the flag column from your SQL Server table
-
+        FlagColumn,
         CASE 
             WHEN CollectionCategory IN (
                 'Discounted Payoff  - Unsecured', 
@@ -93,27 +88,23 @@ FROM (
                 'Prepayment Partial', 
                 'Consensual Sale Agreement'
             ) THEN 'Amicable Debtor Resolution'
-
             WHEN CollectionCategory IN (
                 'Rent', 
                 'Pspa', 
                 'Sale Deed'
             ) THEN 'Real Estate'
-
             WHEN CollectionCategory IN (
                 'Assignment Of Award - Sale Third Party', 
                 'Collateral Sale', 
                 'Loan Sale'
             ) THEN 'Third Part Resolution'
         END AS CollectionCategoryGroup,
-
         CASE 
             WHEN CollectionCategory IN (
                 'Assignment Of Award – Sale Third Party', 
                 'Cash In Court Third Party - Sale At Auction', 
                 'Cash In Court Third Party - Servicing'
             ) THEN 'SSA'
-
             WHEN CollectionCategory IN (
                 'Rent', 
                 'Pspa', 
@@ -127,32 +118,25 @@ FROM (
                 'Discounted Payoff  - Unsecured', 
                 'Collateral Sale'
             ) THEN 'CF'
-
             WHEN CollectionCategory IN (
                 'Cash In Court', 
                 'Cash In Court Third Party - Secured', 
                 'Cash In Court Third Party - Unsecured'
             ) THEN 'Legal'
-
             WHEN CollectionCategory IN (
                 'Deed In Lieu', 
                 'Consensual Sale Agreement'
             ) OR CollectionCategory IS NULL THEN 'Non-CF'
         END AS CFType,
-
         CollectionID,
         AssetManager
-
     FROM 
         CollectionDetail
-
     WHERE 
         Country = 'ESPANA'
         AND ReceivedDate BETWEEN '{start_date}' AND '{end_date}'
 ) AS subquery
-
 GROUP BY AssetManager
-
 ORDER BY 
     AssetManager;
 """
@@ -173,7 +157,6 @@ SELECT DISTINCT
     act.ActAmount,
     act.CreationUser,
     act.CreationDate,
-
     CASE 
         WHEN act.LegalActCode = 'Auction Start Date and Official ID' THEN 'Auction'
         WHEN act.LegalActCode = 'Assigment of awarding celebrated' THEN 'Assigment of awarding'
@@ -185,26 +168,34 @@ SELECT DISTINCT
         WHEN act.LegalActCode = 'Lawsuit Presentation Date' THEN 'Demands'
         WHEN act.LegalActCode = 'OutCome - Judicial Possession of Keys' THEN 'Possession'
     END AS Bucket
-
 FROM 
     legalactactivity AS act
     INNER JOIN legal AS l ON act.JudicialProcessID = l.JudicialProcessID
     LEFT JOIN Property AS prop ON act.PropertyID = prop.PropertyID
-
 WHERE 
     act.countryID = 2
     AND act.ActDate >= '{start_date}' AND act.ActDate < '{end_date}'
     AND act.CreationDate >= '{start_date}'
-    -- AND act.CreationDate <= '{end_date}'
     AND act.LegalActID IN (8, 23, 61, 71, 98, 134, 214, 258)
-    -- AND act.LegalStage = 'LAWSUIT ADMISSION'
-
 ORDER BY 
     l.InternalLawyerName, 
     act.LegalStage;
 """
 
-# Quarter date ranges
+#####################################################################
+#                    LOCAL APPLICATION LOGIC                          #
+#####################################################################
+
+# Initialize Flask app and extensions
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///bonus_calc.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize extensions
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+CORS(app)
+
+# Quarter date ranges for local calculations
 QUARTER_DATES = {
     'Q1': {'start': '01-01', 'end': '03-31'},
     'Q2': {'start': '04-01', 'end': '06-30'},
@@ -212,10 +203,9 @@ QUARTER_DATES = {
     'Q4': {'start': '10-01', 'end': '12-31'}
 }
 
-# Initialize extensions
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-CORS(app)
+#####################################################################
+#                    LOCAL DATABASE MODELS                            #
+#####################################################################
 
 # Database Models
 class Team(db.Model):
@@ -262,6 +252,8 @@ class IncentiveParameter(db.Model):
     min_threshold = db.Column(db.Float, default=0.0)
     max_threshold = db.Column(db.Float, default=100.0)
     is_active = db.Column(db.Boolean, default=True)
+    quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
+    year = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class BonusCalculation(db.Model):
@@ -269,6 +261,7 @@ class BonusCalculation(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     month = db.Column(db.Integer, nullable=False)
     year = db.Column(db.Integer, nullable=False)
+    quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
     base_salary = db.Column(db.Float, nullable=False)
     performance_score = db.Column(db.Float, nullable=False)
     bonus_amount = db.Column(db.Float, nullable=False)
@@ -342,7 +335,10 @@ class TeamMemberData(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# Routes
+#####################################################################
+#                    API ENDPOINTS                                    #
+#####################################################################
+
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard():
     """Get dashboard overview data"""
@@ -1529,7 +1525,7 @@ def create_incentive_parameter():
         data = request.get_json()
         
         # Validate required fields
-        required_fields = ['team_id', 'category', 'base_bonus']
+        required_fields = ['team_id', 'category', 'base_bonus', 'quarter', 'year']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
@@ -1549,7 +1545,9 @@ def create_incentive_parameter():
             multiplier=data.get('multiplier', 1.0),
             min_threshold=data.get('min_threshold', 0.0),
             max_threshold=data.get('max_threshold', 100.0),
-            is_active=data.get('is_active', True)
+            is_active=data.get('is_active', True),
+            quarter=data['quarter'],
+            year=data['year']
         )
         
         db.session.add(new_parameter)
@@ -1567,7 +1565,9 @@ def create_incentive_parameter():
             'multiplier': new_parameter.multiplier,
             'min_threshold': new_parameter.min_threshold,
             'max_threshold': new_parameter.max_threshold,
-            'is_active': new_parameter.is_active
+            'is_active': new_parameter.is_active,
+            'quarter': new_parameter.quarter,
+            'year': new_parameter.year
         }
         
         return jsonify(param_data), 201
@@ -1644,6 +1644,7 @@ def calculate_bonus():
         employee_id = data.get('employee_id')
         month = data.get('month', datetime.now().month)
         year = data.get('year', datetime.now().year)
+        quarter = f"Q{(month - 1) // 3 + 1}"  # Calculate quarter from month
         
         employee = Employee.query.get_or_404(employee_id)
         performance = PerformanceRecord.query.filter_by(
@@ -1655,8 +1656,16 @@ def calculate_bonus():
         if not performance:
             return jsonify({'error': 'Performance record not found'}), 404
         
-        # Get team incentive parameters
-        team_params = IncentiveParameter.query.filter_by(team_id=employee.team_id, is_active=True).all()
+        # Get team incentive parameters for the specific quarter and year
+        team_params = IncentiveParameter.query.filter_by(
+            team_id=employee.team_id,
+            is_active=True,
+            quarter=quarter,
+            year=year
+        ).all()
+        
+        if not team_params:
+            return jsonify({'error': f'No incentive parameters found for {quarter} {year}'}), 404
         
         # Calculate bonus based on performance and parameters
         base_bonus = employee.salary * 0.1  # 10% base bonus
@@ -1671,11 +1680,12 @@ def calculate_bonus():
         
         final_bonus = base_bonus * performance_multiplier
         
-        # Save calculation
+        # Save calculation with quarter information
         bonus_calc = BonusCalculation(
             employee_id=employee_id,
             month=month,
             year=year,
+            quarter=quarter,
             base_salary=employee.salary,
             performance_score=performance.overall_score,
             bonus_amount=final_bonus
@@ -1685,12 +1695,12 @@ def calculate_bonus():
         db.session.commit()
         
         return jsonify({
-            'employee_name': f"{employee.name} {employee.surname}",
-            'team_name': employee.team.name,
+            'employee_id': employee_id,
+            'quarter': quarter,
+            'year': year,
             'base_salary': employee.salary,
             'performance_score': performance.overall_score,
-            'calculated_bonus': final_bonus,
-            'calculation_date': bonus_calc.calculation_date.isoformat()
+            'bonus_amount': final_bonus
         }), 200
         
     except Exception as e:
