@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { 
   LayoutDashboard, 
   Settings, 
@@ -25,14 +25,14 @@ interface SidebarProps {
   setCollapsed: (collapsed: boolean) => void
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
+export default function Sidebar({ 
   activeSection, 
   setActiveSection, 
   activeTeam, 
   setActiveTeam,
   collapsed,
   setCollapsed
-}) => {
+}: SidebarProps) {
   const [teamsExpanded, setTeamsExpanded] = useState(false)
 
   const navigationItems = [
@@ -204,6 +204,4 @@ const Sidebar: React.FC<SidebarProps> = ({
       </nav>
     </div>
   )
-}
-
-export default Sidebar 
+} 

@@ -1,7 +1,7 @@
 'use client'
 
-import React from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { RefreshCw } from 'lucide-react'
 
 interface TeamData {
   team_id: number;
@@ -24,160 +24,324 @@ interface TeamData {
 }
 
 interface PerformanceDataProps {
-  activeTeam?: string | null;
+  activeTeam: string | null;
 }
 
 interface PerformanceMetrics {
-  id: number;
-  employee_name: string;
-  employee_code: string;
-  position: string;
-  quarter: string;
-  year: string;
-  metrics: {
-    [key: string]: number | null;
-  };
+  [key: string]: any;
 }
 
 const AVAILABLE_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 const AVAILABLE_YEARS = ['2023', '2024', '2025'];
 
-const PerformanceData: React.FC<PerformanceDataProps> = ({ activeTeam }) => {
-  const [mounted, setMounted] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [performanceData, setPerformanceData] = React.useState<PerformanceMetrics[]>([]);
-  const [selectedQuarter, setSelectedQuarter] = React.useState('Q4');
-  const [selectedYear, setSelectedYear] = React.useState('2024');
+export default function PerformanceData({ activeTeam }: PerformanceDataProps) {
+  const [performanceData, setPerformanceData] = useState<PerformanceMetrics | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedQuarter, setSelectedQuarter] = useState('Q4')
+  const [selectedYear, setSelectedYear] = useState('2024')
+  const [teams, setTeams] = useState<any[]>([])
 
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => {
+    fetchTeams()
+  }, [])
 
-  React.useEffect(() => {
-    if (mounted && activeTeam) {
-      fetchPerformanceData();
+  useEffect(() => {
+    if (activeTeam && teams.length > 0) {
+      fetchPerformanceData()
     }
-  }, [activeTeam, selectedQuarter, selectedYear, mounted]);
+  }, [activeTeam, selectedQuarter, selectedYear, teams])
+
+  const fetchTeams = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/teams')
+      if (response.ok) {
+        const data = await response.json()
+        setTeams(data)
+      }
+    } catch (err) {
+      console.error('Error fetching teams:', err)
+    }
+  }
+
+  const getTeamId = (): number | null => {
+    if (!activeTeam || teams.length === 0) return null
+    const team = teams.find((t: any) => t.name.toLowerCase() === activeTeam.toLowerCase())
+    return team ? team.id : null
+  }
 
   const fetchPerformanceData = async () => {
-    if (!activeTeam) return;
+    const teamId = getTeamId()
+    if (!teamId) return
 
     try {
-      setLoading(true);
-      setError(null);
-
+      setLoading(true)
+      setError(null)
+      
       const response = await fetch(
-        `http://localhost:5001/api/performance/${activeTeam}?quarter=${selectedQuarter}&year=${selectedYear}`
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch performance data');
-      }
-
-      const data = await response.json();
-      setPerformanceData(data.performance_data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch performance data');
-      console.error('Error fetching performance data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const renderMetricsTable = (metrics: PerformanceMetrics[]) => {
-    if (!metrics || metrics.length === 0) {
-      return (
-        <div className="text-center py-4 text-gray-500">
-          No performance data available for the selected period.
-        </div>
-      );
-    }
-
-    // Get all unique metric keys
-    const metricKeys = Array.from(
-      new Set(
-        metrics.flatMap(item => 
-          Object.keys(item.metrics || {})
-        )
+        `http://localhost:5001/api/performance/team/${teamId}?quarter=${selectedQuarter}&year=${selectedYear}`
       )
-    ).sort();
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPerformanceData(data)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch performance data')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch performance data')
+      console.error('Error fetching performance data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
+  const refreshFromSQLServer = async () => {
+    const teamId = getTeamId()
+    if (!teamId) return
+
+    try {
+      setRefreshing(true)
+      setError(null)
+      
+      const response = await fetch(
+        `http://localhost:5001/api/performance/team/${teamId}/refresh?quarter=${selectedQuarter}&year=${selectedYear}`
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPerformanceData(data)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to refresh from SQL Server')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh from SQL Server')
+      console.error('Error refreshing from SQL Server:', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const renderLegalTeamData = (data: any) => {
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Employee Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Employee Code
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Position
-              </th>
-              {metricKeys.map(key => (
-                <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {key.replace(/_/g, ' ')}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((item, index) => (
-              <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.employee_name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.employee_code}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.position}
-                </td>
-                {metricKeys.map(key => (
-                  <td key={key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.metrics[key]?.toLocaleString() ?? 'N/A'}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Total Legal Acts</h3>
+            <p className="text-3xl font-bold text-blue-600">{data.total_legal_acts || 0}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Total Amount</h3>
+            <p className="text-3xl font-bold text-green-600">€{data.total_amount?.toLocaleString() || 0}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Avg per Act</h3>
+            <p className="text-3xl font-bold text-purple-600">€{data.avg_amount_per_act?.toLocaleString() || 0}</p>
+          </div>
+        </div>
 
-  // Only render content after mounting
-  if (!mounted) {
-    return null;
+        {/* Distribution Charts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Bucket Distribution */}
+          {data.bucket_distribution && (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-4">Legal Act Categories</h3>
+              <div className="space-y-2">
+                {Object.entries(data.bucket_distribution).map(([bucket, count]: [string, any]) => (
+                  <div key={bucket} className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{bucket}</span>
+                    <span className="font-semibold">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top Performers */}
+          {data.top_performers && data.top_performers.length > 0 && (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-4">Top Performers</h3>
+              <div className="space-y-2">
+                {data.top_performers.map((performer: any, index: number) => (
+                  <div key={index} className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{performer.employee_name}</span>
+                    <span className="font-semibold">{performer.legal_acts || performer.overall_score}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderServicingTeamData = (data: any) => {
+    return (
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Total Collections</h3>
+            <p className="text-3xl font-bold text-blue-600">{data.total_collections || 0}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Total Amount</h3>
+            <p className="text-3xl font-bold text-green-600">€{data.total_amount?.toLocaleString() || 0}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Avg per Collection</h3>
+            <p className="text-3xl font-bold text-purple-600">€{data.avg_amount_per_collection?.toLocaleString() || 0}</p>
+          </div>
+        </div>
+
+        {/* Distribution Charts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Category Distribution */}
+          {data.category_distribution && (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-4">Category Distribution</h3>
+              <div className="space-y-2">
+                {Object.entries(data.category_distribution).map(([category, count]: [string, any]) => (
+                  <div key={category} className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{category}</span>
+                    <span className="font-semibold">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CF Type Distribution */}
+          {data.cf_type_distribution && (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-4">CF Type Distribution</h3>
+              <div className="space-y-2">
+                {Object.entries(data.cf_type_distribution).map(([cfType, count]: [string, any]) => (
+                  <div key={cfType} className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{cfType}</span>
+                    <span className="font-semibold">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStandardTeamData = (data: any) => {
+    return (
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Total Employees</h3>
+            <p className="text-3xl font-bold text-blue-600">{data.total_employees || 0}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Avg Productivity</h3>
+            <p className="text-3xl font-bold text-green-600">{data.avg_productivity || 0}%</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Avg Quality</h3>
+            <p className="text-3xl font-bold text-purple-600">{data.avg_quality || 0}%</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900">Overall Score</h3>
+            <p className="text-3xl font-bold text-orange-600">{data.avg_overall || 0}%</p>
+          </div>
+        </div>
+
+        {/* Top Performers */}
+        {data.top_performers && data.top_performers.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-4">Top Performers</h3>
+            <div className="space-y-2">
+              {data.top_performers.map((performer: any, index: number) => (
+                <div key={index} className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">{performer.employee_name}</span>
+                  <span className="font-semibold">{performer.overall_score}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderContent = () => {
+    if (!performanceData) {
+      return (
+        <div className="text-gray-500 text-center py-8">
+          {activeTeam ? 'No performance data available for this team' : 'Please select a team from the sidebar'}
+        </div>
+      )
+    }
+
+    // Check if this is SQL Server data (Legal/Servicing teams)
+    if (performanceData.data_source && performanceData.data_source.includes('SQL Server')) {
+      if (activeTeam?.toLowerCase() === 'legal') {
+        return renderLegalTeamData(performanceData)
+      } else if (activeTeam?.toLowerCase() === 'servicing') {
+        return renderServicingTeamData(performanceData)
+      }
+    }
+
+    // Standard team data
+    return renderStandardTeamData(performanceData)
   }
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Performance Data</h2>
-        <div className="flex gap-4">
+        <h2 className="text-2xl font-bold">
+          {activeTeam ? `${activeTeam} Team Performance` : 'Performance Data'}
+        </h2>
+        
+        <div className="flex gap-4 items-center">
           <select
             value={selectedQuarter}
             onChange={(e) => setSelectedQuarter(e.target.value)}
             className="px-4 py-2 border rounded"
+            disabled={loading || refreshing}
           >
             {AVAILABLE_QUARTERS.map(q => (
               <option key={q} value={q}>{q}</option>
             ))}
           </select>
+          
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
             className="px-4 py-2 border rounded"
+            disabled={loading || refreshing}
           >
             {AVAILABLE_YEARS.map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+
+          {activeTeam && (activeTeam.toLowerCase() === 'legal' || activeTeam.toLowerCase() === 'servicing') && (
+            <button
+              onClick={refreshFromSQLServer}
+              disabled={refreshing || loading}
+              className={`flex items-center gap-2 px-4 py-2 rounded ${
+                refreshing || loading
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
+            >
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh from SQL Server
+            </button>
+          )}
         </div>
       </div>
 
@@ -187,15 +351,26 @@ const PerformanceData: React.FC<PerformanceDataProps> = ({ activeTeam }) => {
         </div>
       )}
 
-      {loading ? (
+      {(loading || refreshing) && (
         <div className="flex justify-center items-center py-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <span className="ml-2">{refreshing ? 'Refreshing from SQL Server...' : 'Loading...'}</span>
         </div>
-      ) : (
-        renderMetricsTable(performanceData)
+      )}
+
+      {!loading && !refreshing && (
+        <div>
+          {performanceData && (
+            <div className="mb-4 text-sm text-gray-600">
+              <span>Period: {performanceData.query_period || `${selectedQuarter} ${selectedYear}`}</span>
+              {performanceData.data_source && (
+                <span className="ml-4">Source: {performanceData.data_source}</span>
+              )}
+            </div>
+          )}
+          {renderContent()}
+        </div>
       )}
     </div>
-  );
-};
-
-export default PerformanceData; 
+  )
+} 
