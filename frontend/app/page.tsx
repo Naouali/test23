@@ -72,7 +72,7 @@ export default function Home() {
       case 'incentives':
         return <IncentiveParameters />
       case 'performance':
-        return <PerformanceData />
+        return <PerformanceData activeTeam={activeTeam} />
       case 'teams':
         return <Teams activeTeam={activeTeam} setActiveTeam={setActiveTeam} />
       default:

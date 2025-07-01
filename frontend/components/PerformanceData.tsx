@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import type { FC } from 'react'
-import { Calendar } from 'lucide-react'
+import React from 'react'
+import { Loader2 } from 'lucide-react'
 
 interface TeamData {
   team_id: number;
@@ -24,219 +23,176 @@ interface TeamData {
   }>;
 }
 
+interface PerformanceDataProps {
+  activeTeam?: string | null;
+}
+
+interface PerformanceMetrics {
+  id: number;
+  employee_name: string;
+  employee_code: string;
+  position: string;
+  quarter: string;
+  year: string;
+  metrics: {
+    [key: string]: number | null;
+  };
+}
+
 const AVAILABLE_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 const AVAILABLE_YEARS = ['2023', '2024', '2025'];
 
-const getCurrentQuarterAndYear = () => {
-  // Only run this on the client side
-  if (typeof window === 'undefined') {
-    return { quarter: 'Q4', year: '2024' };
-  }
+const PerformanceData: React.FC<PerformanceDataProps> = ({ activeTeam }) => {
+  const [mounted, setMounted] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [performanceData, setPerformanceData] = React.useState<PerformanceMetrics[]>([]);
+  const [selectedQuarter, setSelectedQuarter] = React.useState('Q4');
+  const [selectedYear, setSelectedYear] = React.useState('2024');
 
-  const now = new Date();
-  const month = now.getMonth();
-  const quarter = `Q${Math.floor(month / 3) + 1}`;
-  const year = now.getFullYear().toString();
-
-  // Validate against available options
-  const validQuarter = AVAILABLE_QUARTERS.includes(quarter) ? quarter : 'Q4';
-  const validYear = AVAILABLE_YEARS.includes(year) ? year : '2024';
-
-  return { quarter: validQuarter, year: validYear };
-};
-
-const PerformanceData: FC = () => {
-  // Initialize state with default values
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  
-  // Initialize with default values
-  const [selectedQuarter, setSelectedQuarter] = useState('Q4');
-  const [selectedYear, setSelectedYear] = useState('2024');
-  const [teamsData, setTeamsData] = useState<TeamData[]>([]);
-
-  // Update period after component mounts
-  useEffect(() => {
-    const { quarter, year } = getCurrentQuarterAndYear();
-    setSelectedQuarter(quarter);
-    setSelectedYear(year);
+  React.useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (mounted) {
+  React.useEffect(() => {
+    if (mounted && activeTeam) {
       fetchPerformanceData();
     }
-  }, [selectedQuarter, selectedYear, mounted]);
+  }, [activeTeam, selectedQuarter, selectedYear, mounted]);
 
   const fetchPerformanceData = async () => {
+    if (!activeTeam) return;
+
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch data for all teams
-      const responses = await Promise.all([
-        fetch(`http://localhost:5001/api/performance/team/1/refresh?quarter=${selectedQuarter}&year=${selectedYear}`),
-        fetch(`http://localhost:5001/api/performance/team/2/refresh?quarter=${selectedQuarter}&year=${selectedYear}`),
-        fetch(`http://localhost:5001/api/performance/team/3/refresh?quarter=${selectedQuarter}&year=${selectedYear}`)
-      ]);
+      const response = await fetch(
+        `http://localhost:5001/api/performance/${activeTeam}?quarter=${selectedQuarter}&year=${selectedYear}`
+      );
 
-      const data = await Promise.all(responses.map(r => r.json()));
-      setTeamsData(data.filter(d => d && typeof d === 'object')); // Filter out null or invalid responses
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch performance data');
+      }
+
+      const data = await response.json();
+      setPerformanceData(data.performance_data || []);
     } catch (err) {
-      setError('Failed to fetch performance data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch performance data');
       console.error('Error fetching performance data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatNumber = (num: number | undefined | null): string => {
-    if (num === undefined || num === null) return '0';
-    return num.toLocaleString();
-  };
+  const renderMetricsTable = (metrics: PerformanceMetrics[]) => {
+    if (!metrics || metrics.length === 0) {
+      return (
+        <div className="text-center py-4 text-gray-500">
+          No performance data available for the selected period.
+        </div>
+      );
+    }
 
-  const formatCurrency = (num: number | undefined | null): string => {
-    if (num === undefined || num === null) return '€0';
-    return `€${num.toLocaleString()}`;
-  };
-
-  const renderTeamTable = (data: TeamData | null | undefined) => {
-    if (!data) return null;
+    // Get all unique metric keys
+    const metricKeys = Array.from(
+      new Set(
+        metrics.flatMap(item => 
+          Object.keys(item.metrics || {})
+        )
+      )
+    ).sort();
 
     return (
-      <div key={data.team_id} className="mb-8">
-        <h3 className="text-xl font-semibold mb-4">{data.team_name || 'Unknown Team'}</h3>
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b">
-            <p className="text-sm text-gray-600">
-              Period: {data.query_period || 'N/A'} | Source: {data.data_source || 'N/A'}
-            </p>
-          </div>
-          <div className="p-4">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2">Metric</th>
-                  <th className="text-right py-2">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b">
-                  <td className="py-2">Total Collections</td>
-                  <td className="text-right">{formatNumber(data.total_collections)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2">Total Amount</td>
-                  <td className="text-right">{formatCurrency(data.total_amount)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2">Average Amount per Collection</td>
-                  <td className="text-right">{formatCurrency(data.avg_amount_per_collection)}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Top Performers */}
-            {data.top_performers && data.top_performers.length > 0 && (
-              <div className="mt-6">
-                <h4 className="font-semibold mb-2">Top Performers</h4>
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2">Employee</th>
-                      <th className="text-right py-2">Collections</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.top_performers.map((performer, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="py-2">{performer.employee_name || 'Unknown'}</td>
-                        <td className="text-right">{formatNumber(performer.collections)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Monthly Trend */}
-            {data.quarterly_trend && data.quarterly_trend.length > 0 && (
-              <div className="mt-6">
-                <h4 className="font-semibold mb-2">Monthly Collections</h4>
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2">Month</th>
-                      <th className="text-right py-2">Collections</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.quarterly_trend.map((trend, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="py-2">{trend.month || 'Unknown'}</td>
-                        <td className="text-right">{formatNumber(trend.collections)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Employee Name
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Employee Code
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Position
+              </th>
+              {metricKeys.map(key => (
+                <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {key.replace(/_/g, ' ')}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {metrics.map((item, index) => (
+              <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {item.employee_name}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {item.employee_code}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {item.position}
+                </td>
+                {metricKeys.map(key => (
+                  <td key={key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.metrics[key]?.toLocaleString() ?? 'N/A'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   };
 
+  // Only render content after mounting
+  if (!mounted) {
+    return null;
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Performance Data</h1>
-          <p className="text-gray-600 mt-2">SQL Server data and calculations by team</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Calendar className="h-5 w-5 text-gray-600" />
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Performance Data</h2>
+        <div className="flex gap-4">
           <select
             value={selectedQuarter}
             onChange={(e) => setSelectedQuarter(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border rounded"
           >
-            {AVAILABLE_QUARTERS.map(quarter => (
-              <option key={quarter} value={quarter}>{quarter}</option>
+            {AVAILABLE_QUARTERS.map(q => (
+              <option key={q} value={q}>{q}</option>
             ))}
           </select>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border rounded"
           >
-            {AVAILABLE_YEARS.map(year => (
-              <option key={year} value={year}>{year}</option>
+            {AVAILABLE_YEARS.map(y => (
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
           {error}
         </div>
       )}
 
-      {/* Loading State */}
       {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="flex justify-center items-center py-4">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
         </div>
       ) : (
-        /* Team Tables */
-        <div>
-          {teamsData.map(teamData => renderTeamTable(teamData))}
-        </div>
+        renderMetricsTable(performanceData)
       )}
     </div>
   );
