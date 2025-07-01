@@ -507,6 +507,7 @@ def download_team_template(team_id):
             return jsonify({'error': 'Excel processing not available. Please install pandas and openpyxl.'}), 500
             
         team = Team.query.get_or_404(team_id)
+        team_name = team.name.lower().replace(' team', '')  # Normalize team name
         
         output = BytesIO()
         wb = openpyxl.Workbook()
@@ -514,88 +515,35 @@ def download_team_template(team_id):
         ws.title = f"{team.name} Members"
         
         # Define headers and data based on team type
-        if team.name.lower() == 'legal team':
-            # Legal team template (32 columns)
+        if team_name == 'legal':
             headers = [
                 'Legal Manager',
                 'Employee #',
                 'Category',
                 'Quarterly Incentive',
                 'Team Leader',
-                'Lawsuit Presentation (#)',
                 'Lawsuit Presentation Target (#)',
-                '% Lawsuit Presentation',
-                'Lawsuit Presentation Weight',
-                'Auction (€)',
                 'Auction Target (€)',
-                '% Auction',
-                'Auction Weight',
-                'CDR (€)',
                 'CDR Target (€)',
-                '% CDR',
-                'CDR Weight',
-                'Testimonies (€)',
                 'Testimonies Target (€)',
-                '% Testimonies',
-                'Testimonies Weight',
-                'Possessions (€)',
                 'Possessions Target (€)',
-                '% Possessions',
-                'Possesions Weight',
-                'CIC (€)',
-                'CIC Target (€)',
-                '% CIC',
-                'CIC Weight',
-                '% Targets Fulfillment',
-                '% Incentive',
-                '% Data Quality',
-                'TOTAL INCENTIVE %',
-                'Q4 TO BE PAID INCENTIVE (80%)'
+                'CIC Target (€)'
             ]
-            
-            # Sample data for Legal team
             sample_data = [
-                'John Doe',           # Legal Manager
-                'L001',               # Employee #
-                'Senior Legal',       # Category
-                120000,               # Quarterly Incentive
-                'Jane Smith',         # Team Leader
-                45,                   # Lawsuit Presentation (#) - from SQL Server
-                50,                   # Lawsuit Presentation Target (#)
-                '=F2/G2*100',         # % Lawsuit Presentation (calculated)
-                20,                   # Lawsuit Presentation Weight
-                95000,                # Auction (€) - from SQL Server
-                100000,               # Auction Target (€)
-                '=J2/K2*100',         # % Auction (calculated)
-                25,                   # Auction Weight
-                70000,                # CDR (€) - from SQL Server
-                75000,                # CDR Target (€)
-                '=N2/O2*100',         # % CDR (calculated)
-                20,                   # CDR Weight
-                22000,                # Testimonies (€) - from SQL Server
-                25000,                # Testimonies Target (€)
-                '=R2/S2*100',         # % Testimonies (calculated)
-                15,                   # Testimonies Weight
-                48000,                # Possessions (€) - from SQL Server
-                50000,                # Possessions Target (€)
-                '=V2/W2*100',         # % Possessions (calculated)
-                10,                   # Possesions Weight
-                28000,                # CIC (€) - from SQL Server
-                30000,                # CIC Target (€)
-                '=Z2/AA2*100',        # % CIC (calculated)
-                10,                   # CIC Weight
-                '=H2*I2/100+J2*L2/100+N2*P2/100+R2*T2/100+V2*X2/100+Z2*AB2/100',
-                '=AC2*0.85',          # % Incentive (calculated)
-                '=RANDBETWEEN(85,100)',  # % Data Quality (calculated)
-                '=AD2*AE2/100',       # TOTAL INCENTIVE % (calculated)
-                '=AF2*0.8'            # Q4 TO BE PAID INCENTIVE (80%) (calculated)
+                'John Doe',
+                'L001',
+                'Senior Legal',
+                120000,
+                'Jane Smith',
+                50,
+                100000,
+                75000,
+                25000,
+                50000,
+                30000
             ]
-            
-            # Calculated columns for Legal team (blue background)
-            calculated_columns = [8, 12, 16, 20, 24, 28, 30, 31, 32, 33]
-            
-        elif team.name.lower() == 'loan team':
-            # Loan team template
+            calculated_columns = []
+        elif team_name == 'loan':
             headers = [
                 'Loan Manager',
                 'Employee Number',
@@ -605,91 +553,55 @@ def download_team_template(team_id):
                 'Portfolio',
                 'Loan Amount',
                 'Loan Target',
-                '% Loan Target',
                 'NPL Amount',
                 'NPL Target',
-                '% NPL Target',
                 'Recovery Rate',
-                'Recovery Target',
-                '% Recovery Target',
-                '% Data Quality',
-                'TOTAL INCENTIVE %',
-                'Q4 TO BE PAID INCENTIVE (80%)'
+                'Recovery Target'
             ]
-            
-            # Sample data for Loan team
             sample_data = [
-                'John Doe',           # Loan Manager
-                'LOAN001',            # Employee Number
-                'Senior Analyst',      # Category
-                75000,                # Quarter Incentive Base
-                'Jane Smith',         # Team Leader
-                'Portfolio B',        # Portfolio
-                500000,              # Loan Amount
-                600000,              # Loan Target
-                '=G2/H2*100',        # % Loan Target (calculated)
-                100000,              # NPL Amount
-                120000,              # NPL Target
-                '=J2/K2*100',        # % NPL Target (calculated)
-                85,                  # Recovery Rate
-                90,                  # Recovery Target
-                '=M2/N2*100',        # % Recovery Target (calculated)
-                '=RANDBETWEEN(85,100)',  # % Data Quality (calculated)
-                '=IF(I2>=100,1.2,IF(I2>=90,1.1,IF(I2>=80,1,0.8)))*IF(L2>=100,1.2,IF(L2>=90,1.1,IF(L2>=80,1,0.8)))*IF(O2>=100,1.2,IF(O2>=90,1.1,IF(O2>=80,1,0.8)))',  # TOTAL INCENTIVE % (calculated)
-                '=Q2*0.8'            # Q4 TO BE PAID INCENTIVE (80%) (calculated)
+                'John Doe',
+                'LOAN001',
+                'Senior Analyst',
+                75000,
+                'Jane Smith',
+                'Portfolio B',
+                500000,
+                600000,
+                100000,
+                120000,
+                85,
+                90
             ]
-            
-            # Calculated columns for Loan team (blue background)
-            calculated_columns = [9, 12, 15, 16, 17, 18]
-            
-        else:
-            # Servicing team template (18 columns) - existing structure
+            calculated_columns = []
+        elif team_name == 'servicing':
             headers = [
                 'Asset/Sales Manager',
-                'Employee Number', 
+                'Employee Number',
                 'Category',
                 'Quarter Incentive Base',
                 'Team Leader',
                 'Main Portfolio',
                 'Cash Flow',
                 'Cash Flow Target',
-                '% Cash Flow Target',
                 'NCF',
-                'NCF Target', 
-                '% NCF Target',
-                'Incentive % CF',
-                'NCF Target (Y/N)',
-                'Incentive % NCF',
-                '% Data Quality',
-                'TOTAL INCENTIVE %',
-                'Q1 TO BE PAID INCENTIVE (80%)'
+                'NCF Target'
             ]
-            
-            # Sample data for Servicing team
             sample_data = [
-                'John Doe',           # Asset/Sales Manager
-                'EMP001',             # Employee Number
-                'Analyst',            # Category
-                50000,                # Quarter Incentive Base
-                'Jane Smith',         # Team Leader
-                'Portfolio A',        # Main Portfolio
-                100000,               # Cash Flow
-                120000,               # Cash Flow Target
-                '=H2/G2*100',         # % Cash Flow Target (calculated)
-                50000,                # NCF
-                60000,                # NCF Target
-                '=K2/J2*100',         # % NCF Target (calculated)
-                '=IF(A2="lezama",IF(I2<60,0,I2),IF(I2<80,0,I2))',  # Incentive % CF (calculated)
-                '=IF(K2="","N","Y")', # NCF Target (Y/N) (calculated)
-                '=IF(N2="N","N/A",IFERROR(MIN(L2,1),0))',  # Incentive % NCF (calculated)
-                '=RANDBETWEEN(85,100)',  # % Data Quality (calculated)
-                '=M2+O2',            # TOTAL INCENTIVE % (calculated)
-                '=Q2*0.8'            # Q1 TO BE PAID INCENTIVE (80%) (calculated)
+                'John Doe',
+                'EMP001',
+                'Analyst',
+                50000,
+                'Jane Smith',
+                'Portfolio A',
+                100000,
+                120000,
+                50000,
+                60000
             ]
-            
-            # Calculated columns for Servicing team (blue background)
             calculated_columns = [9, 12, 13, 14, 15, 16, 17, 18]
-        
+        else:
+            return jsonify({'error': f'Invalid team type: {team_name}'}), 400
+            
         # Add headers
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
@@ -754,6 +666,7 @@ def upload_team_members(team_id):
             return jsonify({'error': 'Excel processing not available. Please install pandas and openpyxl.'}), 500
             
         team = Team.query.get_or_404(team_id)
+        team_name = team.name.lower().replace(' team', '')  # Normalize team name
         
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -775,7 +688,7 @@ def upload_team_members(team_id):
         current_quarter = f'Q{(current_month - 1) // 3 + 1}'
         
         # Define required columns and process data based on team type
-        if team.name.lower() == 'legal':
+        if team_name == 'legal':
             required_columns = [
                 'Legal Manager',
                 'Employee #',
@@ -821,7 +734,7 @@ def upload_team_members(team_id):
                 )
                 db.session.add(legal_data)
                 
-        elif team.name.lower() == 'loan':
+        elif team_name == 'loan':
             required_columns = [
                 'Loan Manager',
                 'Employee Number',
@@ -874,7 +787,7 @@ def upload_team_members(team_id):
                 )
                 db.session.add(loan_data)
                 
-        else:  # Servicing team
+        elif team_name == 'servicing':  # Servicing team
             required_columns = [
                 'Asset/Sales Manager',
                 'Employee Number',
@@ -917,6 +830,8 @@ def upload_team_members(team_id):
                     ncf_target=float(row['NCF Target']) if not pd.isna(row['NCF Target']) else 0
                 )
                 db.session.add(servicing_data)
+        else:
+            return jsonify({'error': f'Invalid team type: {team_name}'}), 400
         
         # Commit all changes
         db.session.commit()
