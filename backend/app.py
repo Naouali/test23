@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import json
 from io import BytesIO
 import requests
+import pymssql
 
 # Optional imports - will be imported only if available
 try:
@@ -222,10 +223,7 @@ class Employee(db.Model):
     name = db.Column(db.String(100), nullable=False)
     surname = db.Column(db.String(100), nullable=False)
     employee_code = db.Column(db.String(50), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    position = db.Column(db.String(100))
-    salary = db.Column(db.Float)
-    target = db.Column(db.Float, default=0.0)  # New field for bonus calculation target
+    category = db.Column(db.String(50), nullable=False)  # Associate, Director, etc.
     team_id = db.Column(db.Integer, db.ForeignKey('team.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     performance_records = db.relationship('PerformanceRecord', backref='employee', lazy=True)
@@ -335,6 +333,51 @@ class TeamMemberData(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class LegalTeamData(db.Model):
+    """Model to store Legal team data from Excel uploads"""
+    id = db.Column(db.Integer, primary_key=True)
+    quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
+    year = db.Column(db.Integer, nullable=False)
+    
+    # Excel columns (exact names)
+    legal_manager = db.Column(db.String(200), nullable=False)
+    employee_number = db.Column(db.String(100), nullable=False)  # 'Employee #' in Excel
+    category = db.Column(db.String(100), nullable=False)
+    quarterly_incentive = db.Column(db.Float, nullable=False)
+    team_leader = db.Column(db.String(200), nullable=False)
+    lawsuit_presentation_target = db.Column(db.Float, nullable=False)  # 'Lawsuit Presentation Target (#)'
+    auction_target = db.Column(db.Float, nullable=False)  # 'Auction Target (€)'
+    cdr_target = db.Column(db.Float, nullable=False)  # 'CDR Target (€)'
+    testimonies_target = db.Column(db.Float, nullable=False)  # 'Testimonies Target (€)'
+    possessions_target = db.Column(db.Float, nullable=False)  # 'Possessions Target (€)'
+    cic_target = db.Column(db.Float, nullable=False)  # 'CIC Target (€)'
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ServicingTeamData(db.Model):
+    """Model to store Servicing team data from Excel uploads"""
+    id = db.Column(db.Integer, primary_key=True)
+    quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
+    year = db.Column(db.Integer, nullable=False)
+    
+    # Excel columns (exact names)
+    asset_sales_manager = db.Column(db.String(200), nullable=False)  # 'Asset/Sales Manager'
+    employee_number = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    quarter_incentive_base = db.Column(db.Float, nullable=False)  # 'Quarter Incentive Base'
+    team_leader = db.Column(db.String(200), nullable=False)
+    main_portfolio = db.Column(db.String(200), nullable=False)
+    cash_flow = db.Column(db.Float, nullable=False)
+    cash_flow_target = db.Column(db.Float, nullable=False)
+    ncf = db.Column(db.Float, nullable=False)
+    ncf_target = db.Column(db.Float, nullable=False)
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 #####################################################################
 #                    API ENDPOINTS                                    #
 #####################################################################
@@ -411,10 +454,7 @@ def get_team(team_id):
                     'name': emp.name,
                     'surname': emp.surname,
                     'employee_code': emp.employee_code,
-                    'email': emp.email,
-                    'position': emp.position,
-                    'salary': emp.salary,
-                    'target': emp.target
+                    'category': emp.category
                 } for emp in team.employees
             ],
             'incentive_parameters': [
@@ -655,7 +695,13 @@ def upload_team_members(team_id):
         # Read Excel file
         df = pd.read_excel(file)
         
-        # Define required columns based on team type
+        # Get current quarter and year
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+        current_quarter = f'Q{(current_month - 1) // 3 + 1}'
+        
+        # Define required columns and process data based on team type
         if team.name.lower() == 'legal team':
             required_columns = [
                 'Legal Manager',
@@ -670,11 +716,42 @@ def upload_team_members(team_id):
                 'Possessions Target (€)',
                 'CIC Target (€)'
             ]
-        else:
-            # Servicing team
+            
+            # Check for missing required columns
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
+            
+            # Clear existing data for this quarter/year
+            LegalTeamData.query.filter_by(quarter=current_quarter, year=current_year).delete()
+            
+            # Process each row
+            for _, row in df.iterrows():
+                # Skip empty rows
+                if pd.isna(row['Legal Manager']) or pd.isna(row['Employee #']):
+                    continue
+                
+                legal_data = LegalTeamData(
+                    quarter=current_quarter,
+                    year=current_year,
+                    legal_manager=str(row['Legal Manager']).strip(),
+                    employee_number=str(row['Employee #']).strip(),
+                    category=str(row['Category']).strip(),
+                    quarterly_incentive=float(row['Quarterly Incentive']) if not pd.isna(row['Quarterly Incentive']) else 0,
+                    team_leader=str(row['Team Leader']).strip(),
+                    lawsuit_presentation_target=float(row['Lawsuit Presentation Target (#)']) if not pd.isna(row['Lawsuit Presentation Target (#)']) else 0,
+                    auction_target=float(row['Auction Target (€)']) if not pd.isna(row['Auction Target (€)']) else 0,
+                    cdr_target=float(row['CDR Target (€)']) if not pd.isna(row['CDR Target (€)']) else 0,
+                    testimonies_target=float(row['Testimonies Target (€)']) if not pd.isna(row['Testimonies Target (€)']) else 0,
+                    possessions_target=float(row['Possessions Target (€)']) if not pd.isna(row['Possessions Target (€)']) else 0,
+                    cic_target=float(row['CIC Target (€)']) if not pd.isna(row['CIC Target (€)']) else 0
+                )
+                db.session.add(legal_data)
+            
+        else:  # Servicing team
             required_columns = [
                 'Asset/Sales Manager',
-                'Employee Number', 
+                'Employee Number',
                 'Category',
                 'Quarter Incentive Base',
                 'Team Leader',
@@ -684,211 +761,49 @@ def upload_team_members(team_id):
                 'NCF',
                 'NCF Target'
             ]
-        
-        # Check for missing required columns
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
-        
-        # Process each row and calculate derived fields
-        employees_data = []
-        for index, row in df.iterrows():
-            if team.name.lower() == 'legal team':
-                # Process Legal team data
-                legal_manager = str(row['Legal Manager']).strip()
-                employee_hash = str(row['Employee #']).strip()
-                
-                # Skip empty rows
-                if pd.isna(row['Legal Manager']) or pd.isna(row['Employee #']):
-                    continue
-                
-                # Get target values
-                lawsuit_target = float(row['Lawsuit Presentation Target (#)']) if not pd.isna(row['Lawsuit Presentation Target (#)']) else 0
-                auction_target = float(row['Auction Target (€)']) if not pd.isna(row['Auction Target (€)']) else 0
-                cdr_target = float(row['CDR Target (€)']) if not pd.isna(row['CDR Target (€)']) else 0
-                testimonies_target = float(row['Testimonies Target (€)']) if not pd.isna(row['Testimonies Target (€)']) else 0
-                possessions_target = float(row['Possessions Target (€)']) if not pd.isna(row['Possessions Target (€)']) else 0
-                cic_target = float(row['CIC Target (€)']) if not pd.isna(row['CIC Target (€)']) else 0
-                
-                # Get actual values from SQL Server for this Legal Manager
-                try:
-                    # Call our own API endpoint to get SQL Server data
-                    import requests
-                    quarter = request.args.get('quarter', 'Q4')
-                    year = request.args.get('year', '2024')
-                    
-                    legal_data_response = requests.get(
-                        f'http://localhost:5000/api/legal/performance/{legal_manager}',
-                        params={'quarter': quarter, 'year': year}
-                    )
-                    
-                    if legal_data_response.status_code == 200:
-                        legal_data = legal_data_response.json()
-                        lawsuit_actual = legal_data.get('lawsuit_presentation_count', 0)
-                        auction_actual = legal_data.get('auction_amount', 0)
-                        cdr_actual = legal_data.get('cdr_amount', 0)
-                        testimonies_actual = legal_data.get('testimonies_amount', 0)
-                        possessions_actual = legal_data.get('possessions_amount', 0)
-                        cic_actual = legal_data.get('cic_amount', 0)
-                    else:
-                        # Fallback to placeholder values if API call fails
-                        lawsuit_actual = 45
-                        auction_actual = 95000
-                        cdr_actual = 70000
-                        testimonies_actual = 22000
-                        possessions_actual = 48000
-                        cic_actual = 28000
-                        
-                except Exception as e:
-                    # Fallback to placeholder values if any error occurs
-                    lawsuit_actual = 45
-                    auction_actual = 95000
-                    cdr_actual = 70000
-                    testimonies_actual = 22000
-                    possessions_actual = 48000
-                    cic_actual = 28000
-                
-                # Calculate percentages
-                lawsuit_percentage = (lawsuit_actual / lawsuit_target * 100) if lawsuit_target > 0 else 0
-                auction_percentage = (auction_actual / auction_target * 100) if auction_target > 0 else 0
-                cdr_percentage = (cdr_actual / cdr_target * 100) if cdr_target > 0 else 0
-                testimonies_percentage = (testimonies_actual / testimonies_target * 100) if testimonies_target > 0 else 0
-                possessions_percentage = (possessions_actual / possessions_target * 100) if possessions_target > 0 else 0
-                cic_percentage = (cic_actual / cic_target * 100) if cic_target > 0 else 0
-                
-                # Calculate weighted targets fulfillment
-                weights = [20, 25, 20, 15, 10, 10]  # Lawsuit, Auction, CDR, Testimonies, Possessions, CIC
-                percentages = [lawsuit_percentage, auction_percentage, cdr_percentage, testimonies_percentage, possessions_percentage, cic_percentage]
-                
-                targets_fulfillment = sum(p * w / 100 for p, w in zip(percentages, weights))
-                incentive_percentage = targets_fulfillment * 0.85  # 85% of targets fulfillment
-                data_quality = 95.0  # Default value
-                total_incentive = incentive_percentage * data_quality / 100
-                q4_incentive = total_incentive * 0.8
-                
-                employee_data = {
-                    'legal_manager': legal_manager,
-                    'employee_hash': employee_hash,
-                    'category': str(row['Category']).strip() if not pd.isna(row['Category']) else 'Senior Legal',
-                    'quarterly_incentive': float(row['Quarterly Incentive']) if not pd.isna(row['Quarterly Incentive']) else 0,
-                    'team_leader': str(row['Team Leader']).strip() if not pd.isna(row['Team Leader']) else '',
-                    'lawsuit_presentation_target': lawsuit_target,
-                    'auction_target': auction_target,
-                    'cdr_target': cdr_target,
-                    'testimonies_target': testimonies_target,
-                    'possessions_target': possessions_target,
-                    'cic_target': cic_target,
-                    'lawsuit_presentation': lawsuit_actual,
-                    'lawsuit_presentation_percentage': round(lawsuit_percentage, 2),
-                    'lawsuit_weight': 20,
-                    'auction': auction_actual,
-                    'auction_percentage': round(auction_percentage, 2),
-                    'auction_weight': 25,
-                    'cdr': cdr_actual,
-                    'cdr_percentage': round(cdr_percentage, 2),
-                    'cdr_weight': 20,
-                    'testimonies': testimonies_actual,
-                    'testimonies_percentage': round(testimonies_percentage, 2),
-                    'testimonies_weight': 15,
-                    'possessions': possessions_actual,
-                    'possessions_percentage': round(possessions_percentage, 2),
-                    'possessions_weight': 10,
-                    'cic': cic_actual,
-                    'cic_percentage': round(cic_percentage, 2),
-                    'cic_weight': 10,
-                    'targets_fulfillment': round(targets_fulfillment, 2),
-                    'incentive_percentage': round(incentive_percentage, 2),
-                    'data_quality': data_quality,
-                    'total_incentive': round(total_incentive, 2),
-                    'q4_incentive': round(q4_incentive, 2),
-                    'team_id': team_id,
-                    'note': 'Actual values should be calculated from SQL Server data for this Legal Manager'
-                }
-                
-            else:
-                # Process Servicing team data (existing logic)
-                asset_manager = str(row['Asset/Sales Manager']).strip()
-                cash_flow_target = float(row['Cash Flow Target']) if not pd.isna(row['Cash Flow Target']) else 0
-                ncf = float(row['NCF']) if not pd.isna(row['NCF']) else 0
-                ncf_target = float(row['NCF Target']) if not pd.isna(row['NCF Target']) else 0
-                
+            
+            # Check for missing required columns
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
+            
+            # Clear existing data for this quarter/year
+            ServicingTeamData.query.filter_by(quarter=current_quarter, year=current_year).delete()
+            
+            # Process each row
+            for _, row in df.iterrows():
                 # Skip empty rows
                 if pd.isna(row['Asset/Sales Manager']) or pd.isna(row['Employee Number']):
                     continue
                 
-                # TODO: Get actual Cash Flow from SQL Server for this Asset Manager
-                # This would require a separate API call to get the aggregated data
-                # For now, using the uploaded value as placeholder
-                cash_flow = float(row['Cash Flow']) if not pd.isna(row['Cash Flow']) else 0
-                
-                # Calculate derived fields
-                cash_flow_percentage = (cash_flow / cash_flow_target * 100) if cash_flow_target > 0 else 0
-                ncf_percentage = (ncf / ncf_target * 100) if ncf_target > 0 else 0
-                
-                # Calculate incentive percentages based on performance
-                incentive_cf = 0
-                if asset_manager.lower() == "lezama":
-                    # Special case for "lezama" - 60% threshold
-                    if cash_flow_percentage >= 60:
-                        incentive_cf = cash_flow_percentage
-                    else:
-                        incentive_cf = 0
-                else:
-                    # For all other Asset Managers - 80% threshold
-                    if cash_flow_percentage >= 80:
-                        incentive_cf = cash_flow_percentage
-                    else:
-                        incentive_cf = 0
-                
-                # Calculate NCF Target (Y/N) based on whether NCF Target is blank
-                ncf_target_yn = 'N' if pd.isna(row['NCF Target']) or row['NCF Target'] == '' else 'Y'
-                
-                # Calculate Incentive % NCF based on new formula
-                if ncf_target_yn == 'N':
-                    incentive_ncf = 'N/A'
-                else:
-                    incentive_ncf = min(ncf_percentage / 100, 1) if ncf_percentage > 0 else 0
-                
-                # Data quality percentage (placeholder - could be calculated from other metrics)
-                data_quality = 95.0  # Default value, could be calculated based on data completeness
-                
-                # Total incentive percentage
-                total_incentive = incentive_cf + (incentive_ncf if incentive_ncf != 'N/A' else 0)
-                
-                # Q1 incentive to be paid (80% of total)
-                q1_incentive = total_incentive * 0.8
-                
-                employee_data = {
-                    'asset_sales_manager': asset_manager,
-                    'employee_number': str(row['Employee Number']).strip(),
-                    'category': str(row['Category']).strip() if not pd.isna(row['Category']) else 'Analyst',
-                    'quarter_incentive_base': float(row['Quarter Incentive Base']) if not pd.isna(row['Quarter Incentive Base']) else 0,
-                    'team_leader': str(row['Team Leader']).strip() if not pd.isna(row['Team Leader']) else '',
-                    'main_portfolio': str(row['Main Portfolio']).strip() if not pd.isna(row['Main Portfolio']) else '',
-                    'cash_flow': cash_flow,
-                    'cash_flow_target': cash_flow_target,
-                    'cash_flow_percentage': round(cash_flow_percentage, 2),
-                    'ncf': ncf,
-                    'ncf_target': ncf_target,
-                    'ncf_percentage': round(ncf_percentage, 2),
-                    'incentive_cf': incentive_cf,
-                    'ncf_target_yn': ncf_target_yn,
-                    'incentive_ncf': incentive_ncf,
-                    'data_quality': data_quality,
-                    'total_incentive': round(total_incentive, 2),
-                    'q1_incentive': round(q1_incentive, 2),
-                    'team_id': team_id,
-                    'note': 'Cash Flow should be calculated from SQL Server data using CF + SAA amounts for this Asset Manager'
-                }
-            
-            employees_data.append(employee_data)
+                servicing_data = ServicingTeamData(
+                    quarter=current_quarter,
+                    year=current_year,
+                    asset_sales_manager=str(row['Asset/Sales Manager']).strip(),
+                    employee_number=str(row['Employee Number']).strip(),
+                    category=str(row['Category']).strip(),
+                    quarter_incentive_base=float(row['Quarter Incentive Base']) if not pd.isna(row['Quarter Incentive Base']) else 0,
+                    team_leader=str(row['Team Leader']).strip(),
+                    main_portfolio=str(row['Main Portfolio']).strip(),
+                    cash_flow=float(row['Cash Flow']) if not pd.isna(row['Cash Flow']) else 0,
+                    cash_flow_target=float(row['Cash Flow Target']) if not pd.isna(row['Cash Flow Target']) else 0,
+                    ncf=float(row['NCF']) if not pd.isna(row['NCF']) else 0,
+                    ncf_target=float(row['NCF Target']) if not pd.isna(row['NCF Target']) else 0
+                )
+                db.session.add(servicing_data)
+        
+        # Commit all changes
+        db.session.commit()
         
         return jsonify({
-            'message': f'Successfully processed {len(employees_data)} employees',
-            'employees': employees_data
-        })
+            'message': 'Data uploaded successfully',
+            'team': team.name,
+            'quarter': current_quarter,
+            'year': current_year
+        }), 200
         
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/teams/<int:team_id>/save-members', methods=['POST'])
@@ -914,13 +829,43 @@ def save_team_members(team_id):
         ).delete()
         
         for emp_data in employees_data:
-            # Create new team member data record
+            # Get employee name and code based on team type
+            if team.name.lower() == 'legal team':
+                employee_name = emp_data.get('legal_manager', '')
+                employee_code = emp_data.get('employee_hash', '')
+            else:  # Servicing team
+                employee_name = emp_data.get('asset_sales_manager', '')
+                employee_code = emp_data.get('employee_number', '')
+            
+            # Split name into first and last name
+            name_parts = employee_name.split(' ', 1)
+            first_name = name_parts[0] if name_parts else ''
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            
+            # Create or update employee record
+            employee = Employee.query.filter_by(employee_code=employee_code).first()
+            if not employee:
+                employee = Employee(
+                    name=first_name,
+                    surname=last_name,
+                    employee_code=employee_code,
+                    category=emp_data.get('category', 'Associate'),
+                    team_id=team_id
+                )
+                db.session.add(employee)
+            else:
+                employee.name = first_name
+                employee.surname = last_name
+                employee.category = emp_data.get('category', 'Associate')
+                employee.team_id = team_id
+            
+            # Create team member data record
             team_member = TeamMemberData(
                 team_id=team_id,
                 quarter=quarter,
                 year=year,
-                employee_name=emp_data.get('asset_sales_manager') or emp_data.get('legal_manager', ''),
-                employee_code=emp_data.get('employee_number') or emp_data.get('employee_hash', ''),
+                employee_name=employee_name,
+                employee_code=employee_code,
                 category=emp_data.get('category', ''),
                 team_leader=emp_data.get('team_leader', ''),
                 
@@ -983,11 +928,11 @@ def save_team_members(team_id):
         db.session.commit()
         
         return jsonify({
-            'message': f'Successfully saved {saved_count} team members to {team.name} for {quarter} {year}',
+            'message': f'Successfully saved {saved_count} team members',
             'saved_count': saved_count,
+            'team': team.name,
             'quarter': quarter,
-            'year': year,
-            'note': 'Team member data saved to local database. SQL Server remains read-only for performance data.'
+            'year': year
         }), 200
         
     except Exception as e:
@@ -1118,126 +1063,117 @@ def get_team_performance(team_id):
     try:
         team = Team.query.get_or_404(team_id)
         
-        # Placeholder queries for each team - you can replace these with actual SQL queries
-        if team_id == 1:  # Legal Team
-            # PLACEHOLDER QUERY FOR LEGAL TEAM
-            # SELECT 
-            #   COUNT(DISTINCT employee_id) as total_employees,
-            #   AVG(productivity_score) as avg_productivity,
-            #   AVG(quality_score) as avg_quality,
-            #   AVG(attendance_score) as avg_attendance,
-            #   AVG(overall_score) as avg_overall
-            # FROM performance_records pr
-            # JOIN employees e ON pr.employee_id = e.id
-            # WHERE e.team_id = 1 AND pr.year = 2024 AND pr.month IN (10, 11, 12)
+        # Get quarter and year from request
+        quarter = request.args.get('quarter', 'Q4')
+        year = int(request.args.get('year', datetime.now().year))
+        
+        # Get quarter date range
+        quarter_range = QUARTER_DATES.get(quarter, QUARTER_DATES['Q4'])
+        start_date = f"{year}-{quarter_range['start']}"
+        end_date = f"{year}-{quarter_range['end']}"
+        
+        # Get employees in this team
+        team_employees = Employee.query.filter_by(team_id=team_id).all()
+        total_employees = len(team_employees)
+        
+        # Get performance records for this team in the specified quarter
+        start_month = (int(quarter[1]) - 1) * 3 + 1
+        end_month = start_month + 2
+        
+        performance_records = PerformanceRecord.query.join(Employee).filter(
+            Employee.team_id == team_id,
+            PerformanceRecord.year == year,
+            PerformanceRecord.month.between(start_month, end_month)
+        ).all()
+        
+        # Calculate averages
+        if performance_records:
+            avg_productivity = sum(r.productivity_score for r in performance_records) / len(performance_records)
+            avg_quality = sum(r.quality_score for r in performance_records) / len(performance_records)
+            avg_attendance = sum(r.attendance_score for r in performance_records) / len(performance_records)
+            avg_overall = sum(r.overall_score for r in performance_records) / len(performance_records)
             
-            performance_data = {
-                'team_id': team_id,
-                'team_name': team.name,
-                'quarter': 'Q4 2024',
-                'total_employees': 8,
-                'avg_productivity': 87,
-                'avg_quality': 92,
-                'avg_attendance': 95,
-                'avg_overall': 91,
-                'top_performers': [
-                    {'employee_name': 'Alice Smith', 'overall_score': 96},
-                    {'employee_name': 'Bob Johnson', 'overall_score': 94},
-                    {'employee_name': 'Carol White', 'overall_score': 92}
-                ],
-                'quarterly_trend': [
-                    {'month': 'Oct', 'avg_score': 85},
-                    {'month': 'Nov', 'avg_score': 88},
-                    {'month': 'Dec', 'avg_score': 91}
-                ],
-                'performance_distribution': [
-                    {'range': '90-100%', 'count': 4},
-                    {'range': '80-89%', 'count': 3},
-                    {'range': '70-79%', 'count': 1},
-                    {'range': '60-69%', 'count': 0}
-                ]
+            # Get top performers
+            employee_scores = {}
+            for record in performance_records:
+                emp_id = record.employee_id
+                if emp_id not in employee_scores:
+                    employee_scores[emp_id] = {
+                        'employee_name': f"{record.employee.name} {record.employee.surname}",
+                        'scores': []
+                    }
+                employee_scores[emp_id]['scores'].append(record.overall_score)
+            
+            # Calculate average score for each employee
+            top_performers = []
+            for emp_id, data in employee_scores.items():
+                avg_score = sum(data['scores']) / len(data['scores'])
+                top_performers.append({
+                    'employee_name': data['employee_name'],
+                    'overall_score': round(avg_score, 2)
+                })
+            
+            # Sort and get top 3
+            top_performers = sorted(top_performers, key=lambda x: x['overall_score'], reverse=True)[:3]
+            
+            # Calculate monthly trends
+            monthly_trends = []
+            for month in range(start_month, end_month + 1):
+                month_records = [r for r in performance_records if r.month == month]
+                if month_records:
+                    avg_score = sum(r.overall_score for r in month_records) / len(month_records)
+                    monthly_trends.append({
+                        'month': datetime(year, month, 1).strftime('%b'),
+                        'avg_score': round(avg_score, 2)
+                    })
+            
+            # Calculate score distribution
+            score_ranges = {
+                '90-100%': 0,
+                '80-89%': 0,
+                '70-79%': 0,
+                '60-69%': 0
             }
             
-        elif team_id == 2:  # Loan Team
-            # PLACEHOLDER QUERY FOR LOAN TEAM
-            # SELECT 
-            #   COUNT(DISTINCT employee_id) as total_employees,
-            #   AVG(productivity_score) as avg_productivity,
-            #   AVG(quality_score) as avg_quality,
-            #   AVG(attendance_score) as avg_attendance,
-            #   AVG(overall_score) as avg_overall
-            # FROM performance_records pr
-            # JOIN employees e ON pr.employee_id = e.id
-            # WHERE e.team_id = 2 AND pr.year = 2024 AND pr.month IN (10, 11, 12)
+            for record in performance_records:
+                score = record.overall_score
+                if score >= 90:
+                    score_ranges['90-100%'] += 1
+                elif score >= 80:
+                    score_ranges['80-89%'] += 1
+                elif score >= 70:
+                    score_ranges['70-79%'] += 1
+                elif score >= 60:
+                    score_ranges['60-69%'] += 1
             
-            performance_data = {
-                'team_id': team_id,
-                'team_name': team.name,
-                'quarter': 'Q4 2024',
-                'total_employees': 12,
-                'avg_productivity': 89,
-                'avg_quality': 88,
-                'avg_attendance': 93,
-                'avg_overall': 90,
-                'top_performers': [
-                    {'employee_name': 'David Brown', 'overall_score': 95},
-                    {'employee_name': 'Eve Davis', 'overall_score': 93},
-                    {'employee_name': 'Frank Wilson', 'overall_score': 91}
-                ],
-                'quarterly_trend': [
-                    {'month': 'Oct', 'avg_score': 87},
-                    {'month': 'Nov', 'avg_score': 89},
-                    {'month': 'Dec', 'avg_score': 90}
-                ],
-                'performance_distribution': [
-                    {'range': '90-100%', 'count': 6},
-                    {'range': '80-89%', 'count': 4},
-                    {'range': '70-79%', 'count': 2},
-                    {'range': '60-69%', 'count': 0}
-                ]
-            }
-            
-        elif team_id == 3:  # Servicing Team
-            # PLACEHOLDER QUERY FOR SERVICING TEAM
-            # SELECT 
-            #   COUNT(DISTINCT employee_id) as total_employees,
-            #   AVG(productivity_score) as avg_productivity,
-            #   AVG(quality_score) as avg_quality,
-            #   AVG(attendance_score) as avg_attendance,
-            #   AVG(overall_score) as avg_overall
-            # FROM performance_records pr
-            # JOIN employees e ON pr.employee_id = e.id
-            # WHERE e.team_id = 3 AND pr.year = 2024 AND pr.month IN (10, 11, 12)
-            
-            performance_data = {
-                'team_id': team_id,
-                'team_name': team.name,
-                'quarter': 'Q4 2024',
-                'total_employees': 15,
-                'avg_productivity': 85,
-                'avg_quality': 86,
-                'avg_attendance': 91,
-                'avg_overall': 87,
-                'top_performers': [
-                    {'employee_name': 'Grace Lee', 'overall_score': 93},
-                    {'employee_name': 'Henry Chen', 'overall_score': 91},
-                    {'employee_name': 'Ivy Taylor', 'overall_score': 89}
-                ],
-                'quarterly_trend': [
-                    {'month': 'Oct', 'avg_score': 84},
-                    {'month': 'Nov', 'avg_score': 86},
-                    {'month': 'Dec', 'avg_score': 87}
-                ],
-                'performance_distribution': [
-                    {'range': '90-100%', 'count': 5},
-                    {'range': '80-89%', 'count': 7},
-                    {'range': '70-79%', 'count': 3},
-                    {'range': '60-69%', 'count': 0}
-                ]
-            }
-            
+            performance_distribution = [
+                {'range': range_key, 'count': count}
+                for range_key, count in score_ranges.items()
+            ]
         else:
-            return jsonify({'error': 'Team not found'}), 404
+            # No performance records found
+            avg_productivity = 0
+            avg_quality = 0
+            avg_attendance = 0
+            avg_overall = 0
+            top_performers = []
+            monthly_trends = []
+            performance_distribution = []
+        
+        performance_data = {
+            'team_id': team_id,
+            'team_name': team.name,
+            'quarter': f'{quarter} {year}',
+            'total_employees': total_employees,
+            'avg_productivity': round(avg_productivity, 2),
+            'avg_quality': round(avg_quality, 2),
+            'avg_attendance': round(avg_attendance, 2),
+            'avg_overall': round(avg_overall, 2),
+            'top_performers': top_performers,
+            'quarterly_trend': monthly_trends,
+            'performance_distribution': performance_distribution,
+            'query_period': f'{start_date} to {end_date}'
+        }
         
         return jsonify(performance_data), 200
         
@@ -1254,237 +1190,137 @@ def refresh_team_performance(team_id):
         quarter = request.args.get('quarter', 'Q4')
         year = request.args.get('year', '2024')
         
-        # SQL Server Connection Placeholder - Uncomment and configure when ready
-        # import pyodbc
-        # try:
-        #     connection = pyodbc.connect(SQL_SERVER_CONNECTION_STRING)
-        #     cursor = connection.cursor()
-        #     
-        #     if team_id == 1:  # Legal Team - Actual Query
-        #         # Get quarter date range
-        #         quarter_range = QUARTER_DATES.get(quarter, QUARTER_DATES['Q4'])
-        #         start_date = f"{year}-{quarter_range['start']}"
-        #         end_date = f"{year}-{quarter_range['end']}"
-        #         
-        #         # Execute the actual Legal Team query
-        #         query = LEGAL_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
-        #         cursor.execute(query)
-        #         results = cursor.fetchall()
-        #         
-        #         # Process the results
-        #         total_acts = len(results)
-        #         total_amount = sum(row[10] for row in results if row[10] is not None)
-        #         
-        #         # Calculate metrics by bucket and lawyer
-        #         bucket_distribution = {}
-        #         lawyer_distribution = {}
-        #         legal_stages = {}
-        #         
-        #         for row in results:
-        #             lawyer = row[0] if row[0] else 'Unknown'
-        #             bucket = row[13] if row[13] else 'Unknown'
-        #             legal_stage = row[1] if row[1] else 'Unknown'
-        #             amount = row[10] if row[10] else 0
-        #             
-        #             bucket_distribution[bucket] = bucket_distribution.get(bucket, 0) + 1
-        #             lawyer_distribution[lawyer] = lawyer_distribution.get(lawyer, 0) + 1
-        #             legal_stages[legal_stage] = legal_stages.get(legal_stage, 0) + 1
-        #         
-        #         # Get top lawyers by number of acts
-        #         top_lawyers = sorted(lawyer_distribution.items(), key=lambda x: x[1], reverse=True)[:3]
-        #         
-        #         performance_data = {
-        #             'team_id': team_id,
-        #             'team_name': team.name,
-        #             'quarter': f'{quarter} {year}',
-        #             'total_legal_acts': total_acts,
-        #             'total_amount': round(total_amount, 2),
-        #             'avg_amount_per_act': round(total_amount / total_acts, 2) if total_acts > 0 else 0,
-        #             'bucket_distribution': bucket_distribution,
-        #             'lawyer_distribution': lawyer_distribution,
-        #             'legal_stages': legal_stages,
-        #             'data_source': 'SQL Server - LegalActActivity',
-        #             'query_period': f'{start_date} to {end_date}',
-        #             'country_id': 2
-        #         }
-        #         
-        #     elif team_id == 3:  # Servicing Team - Actual Query
-        #         # Get quarter date range
-        #         quarter_range = QUARTER_DATES.get(quarter, QUARTER_DATES['Q4'])
-        #         start_date = f"{year}-{quarter_range['start']}"
-        #         end_date = f"{year}-{quarter_range['end']}"
-        #         
-        #         # Execute the actual Servicing Team query
-        #         query = SERVICING_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
-        #         cursor.execute(query)
-        #         results = cursor.fetchall()
-        #         
-        #         # Process the results
-        #         total_collections = len(results)
-        #         total_amount = sum(row[1] for row in results if row[1] is not None)
-        #         
-        #         # Calculate metrics by category
-        #         category_groups = {}
-        #         cf_types = {}
-        #         
-        #         for row in results:
-        #             category_group = row[4] if row[4] else 'Unknown'
-        #             cf_type = row[5] if row[5] else 'Unknown'
-        #             amount = row[1] if row[1] else 0
-        #             
-        #             category_groups[category_group] = category_groups.get(category_group, 0) + 1
-        #             cf_types[cf_type] = cf_types.get(cf_type, 0) + 1
-        #         
-        #         performance_data = {
-        #             'team_id': team_id,
-        #             'team_name': team.name,
-        #             'quarter': f'{quarter} {year}',
-        #             'total_collections': total_collections,
-        #             'total_amount': round(total_amount, 2),
-        #             'avg_amount_per_collection': round(total_amount / total_collections, 2) if total_collections > 0 else 0,
-        #             'category_distribution': category_groups,
-        #             'cf_type_distribution': cf_types,
-        #             'data_source': 'SQL Server - CollectionDetail',
-        #             'query_period': f'{start_date} to {end_date}',
-        #             'country': 'ESPANA'
-        #         }
-        #         
-        #     elif team_id == 2:  # Loan Team - Placeholder
-        #         # Similar structure for Loan Team
-        #         performance_data = {
-        #             'team_id': team_id,
-        #             'team_name': team.name,
-        #             'quarter': f'{quarter} {year}',
-        #             'data_source': 'SQL Server - Placeholder'
-        #         }
-        #     
-        #     cursor.close()
-        #     connection.close()
-        #     
-        # except Exception as e:
-        #     return jsonify({'error': f'SQL Server connection failed: {str(e)}'}), 500
+        if not PYMSSQL_AVAILABLE:
+            return jsonify({'error': 'SQL Server connection not available. Please install pymssql.'}), 500
+            
+        # Connect to SQL Server
+        conn = pymssql.connect(
+            server=SQL_SERVER_CONFIG['server'],
+            database=SQL_SERVER_CONFIG['database'],
+            user=SQL_SERVER_CONFIG['username'],
+            password=SQL_SERVER_CONFIG['password'],
+            port=SQL_SERVER_CONFIG['port']
+        )
         
-        # For now, return updated mock data (replace this section with actual SQL Server queries above)
-        if team_id == 1:  # Legal Team - Mock data with actual query structure
-            # Get quarter date range for display
+        cursor = conn.cursor()
+        
+        if team_id == 1:  # Legal Team - Actual Query
+            # Get quarter date range
             quarter_range = QUARTER_DATES.get(quarter, QUARTER_DATES['Q4'])
             start_date = f"{year}-{quarter_range['start']}"
             end_date = f"{year}-{quarter_range['end']}"
+            
+            # Execute the actual Legal Team query
+            query = LEGAL_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
+            cursor.execute(query)
+            results = cursor.fetchall()
+            
+            # Process the results
+            total_acts = len(results)
+            total_amount = sum(row[10] for row in results if row[10] is not None)
+            
+            # Calculate metrics by bucket and lawyer
+            bucket_distribution = {}
+            lawyer_distribution = {}
+            legal_stages = {}
+            
+            for row in results:
+                lawyer = row[0] if row[0] else 'Unknown'
+                bucket = row[13] if row[13] else 'Unknown'
+                legal_stage = row[1] if row[1] else 'Unknown'
+                amount = row[10] if row[10] else 0
+                
+                bucket_distribution[bucket] = bucket_distribution.get(bucket, 0) + 1
+                lawyer_distribution[lawyer] = lawyer_distribution.get(lawyer, 0) + 1
+                legal_stages[legal_stage] = legal_stages.get(legal_stage, 0) + 1
+            
+            # Get top lawyers by number of acts
+            top_lawyers = sorted(lawyer_distribution.items(), key=lambda x: x[1], reverse=True)[:3]
             
             performance_data = {
                 'team_id': team_id,
                 'team_name': team.name,
                 'quarter': f'{quarter} {year}',
-                'total_legal_acts': 850,  # Mock data
-                'total_amount': 12500000.75,  # Mock data
-                'avg_amount_per_act': 14705.88,  # Mock data
-                'bucket_distribution': {
-                    'Auction': 180,
-                    'Assigment of awarding': 120,
-                    'Cash In Court': 200,
-                    'Testimony': 150,
-                    'Demands': 100,
-                    'Possession': 100
-                },
-                'lawyer_distribution': {
-                    'Alice Smith': 45,
-                    'Bob Johnson': 42,
-                    'Carol White': 38,
-                    'David Brown': 35,
-                    'Eve Davis': 32
-                },
-                'legal_stages': {
-                    'LAWSUIT ADMISSION': 200,
-                    'JUDICIAL POSSESSION': 150,
-                    'AUCTION PROCESS': 180,
-                    'AWARDING': 120,
-                    'EXECUTION': 200
-                },
-                'data_source': 'Mock Data (Replace with SQL Server - LegalActActivity)',
+                'total_legal_acts': total_acts,
+                'total_amount': round(total_amount, 2),
+                'avg_amount_per_act': round(total_amount / total_acts, 2) if total_acts > 0 else 0,
+                'bucket_distribution': bucket_distribution,
+                'lawyer_distribution': lawyer_distribution,
+                'legal_stages': legal_stages,
+                'data_source': 'SQL Server - LegalActActivity',
                 'query_period': f'{start_date} to {end_date}',
                 'country_id': 2,
                 'top_performers': [
-                    {'employee_name': 'Alice Smith', 'legal_acts': 45},
-                    {'employee_name': 'Bob Johnson', 'legal_acts': 42},
-                    {'employee_name': 'Carol White', 'legal_acts': 38}
+                    {'employee_name': lawyer, 'legal_acts': count}
+                    for lawyer, count in top_lawyers
                 ],
                 'quarterly_trend': [
-                    {'month': 'Oct', 'legal_acts': 280},
-                    {'month': 'Nov', 'legal_acts': 290},
-                    {'month': 'Dec', 'legal_acts': 280}
+                    {'month': datetime(year, month, 1).strftime('%b'), 'legal_acts': len([r for r in results if r[9].month == month])}
+                    for month in range(int(quarter_range['start'].split('-')[0]), int(quarter_range['end'].split('-')[0]) + 1)
                 ]
             }
             
-        elif team_id == 2:  # Loan Team
-            performance_data = {
-                'team_id': team_id,
-                'team_name': team.name,
-                'quarter': f'{quarter} {year}',
-                'total_employees': 12,
-                'avg_productivity': 89,
-                'avg_quality': 88,
-                'avg_attendance': 93,
-                'avg_overall': 90,
-                'data_source': 'Mock Data (Replace with SQL Server)',
-                'top_performers': [
-                    {'employee_name': 'David Brown', 'overall_score': 95},
-                    {'employee_name': 'Eve Davis', 'overall_score': 93},
-                    {'employee_name': 'Frank Wilson', 'overall_score': 91}
-                ],
-                'quarterly_trend': [
-                    {'month': 'Oct', 'avg_score': 87},
-                    {'month': 'Nov', 'avg_score': 89},
-                    {'month': 'Dec', 'avg_score': 90}
-                ],
-                'performance_distribution': [
-                    {'range': '90-100%', 'count': 6},
-                    {'range': '80-89%', 'count': 4},
-                    {'range': '70-79%', 'count': 2},
-                    {'range': '60-69%', 'count': 0}
-                ]
-            }
-            
-        elif team_id == 3:  # Servicing Team - Mock data with actual query structure
-            # Get quarter date range for display
+        elif team_id == 3:  # Servicing Team - Actual Query
+            # Get quarter date range
             quarter_range = QUARTER_DATES.get(quarter, QUARTER_DATES['Q4'])
             start_date = f"{year}-{quarter_range['start']}"
             end_date = f"{year}-{quarter_range['end']}"
             
+            # Execute the actual Servicing Team query
+            query = SERVICING_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
+            cursor.execute(query)
+            results = cursor.fetchall()
+            
+            # Process the results
+            total_collections = len(results)
+            total_amount = sum(row[1] for row in results if row[1] is not None)
+            
+            # Calculate metrics by category
+            category_groups = {}
+            cf_types = {}
+            
+            for row in results:
+                category_group = row[4] if row[4] else 'Unknown'
+                cf_type = row[5] if row[5] else 'Unknown'
+                amount = row[1] if row[1] else 0
+                
+                category_groups[category_group] = category_groups.get(category_group, 0) + 1
+                cf_types[cf_type] = cf_types.get(cf_type, 0) + 1
+            
             performance_data = {
                 'team_id': team_id,
                 'team_name': team.name,
                 'quarter': f'{quarter} {year}',
-                'total_collections': 1250,  # Mock data
-                'total_amount': 2850000.50,  # Mock data
-                'avg_amount_per_collection': 2280.00,  # Mock data
-                'category_distribution': {
-                    'Amicable Debtor Resolution': 450,
-                    'Real Estate': 380,
-                    'Third Part Resolution': 420
-                },
-                'cf_type_distribution': {
-                    'CF': 680,
-                    'Legal': 320,
-                    'SSA': 180,
-                    'Non-CF': 70
-                },
-                'data_source': 'Mock Data (Replace with SQL Server - CollectionDetail)',
+                'total_collections': total_collections,
+                'total_amount': round(total_amount, 2),
+                'avg_amount_per_collection': round(total_amount / total_collections, 2) if total_collections > 0 else 0,
+                'category_distribution': category_groups,
+                'cf_type_distribution': cf_types,
+                'data_source': 'SQL Server - CollectionDetail',
                 'query_period': f'{start_date} to {end_date}',
                 'country': 'ESPANA',
-                'top_performers': [
-                    {'employee_name': 'Grace Lee', 'collections': 45},
-                    {'employee_name': 'Henry Chen', 'collections': 42},
-                    {'employee_name': 'Ivy Taylor', 'collections': 38}
-                ],
+                'top_performers': sorted(
+                    [{'employee_name': row[0], 'collections': row[1]} for row in results],
+                    key=lambda x: x['collections'],
+                    reverse=True
+                )[:3],
                 'quarterly_trend': [
-                    {'month': 'Oct', 'collections': 400},
-                    {'month': 'Nov', 'collections': 420},
-                    {'month': 'Dec', 'collections': 430}
+                    {'month': datetime(year, month, 1).strftime('%b'), 'collections': len([r for r in results if r[0].month == month])}
+                    for month in range(int(quarter_range['start'].split('-')[0]), int(quarter_range['end'].split('-')[0]) + 1)
                 ]
             }
             
-        else:
-            return jsonify({'error': 'Team not found'}), 404
+        elif team_id == 2:  # Loan Team - Placeholder
+            # Similar structure for Loan Team
+            performance_data = {
+                'team_id': team_id,
+                'team_name': team.name,
+                'quarter': f'{quarter} {year}',
+                'data_source': 'SQL Server - Placeholder'
+            }
+        
+        cursor.close()
+        conn.close()
         
         return jsonify(performance_data), 200
         
@@ -1510,7 +1346,9 @@ def get_incentive_parameters():
                 'multiplier': param.multiplier,
                 'min_threshold': param.min_threshold,
                 'max_threshold': param.max_threshold,
-                'is_active': param.is_active
+                'is_active': param.is_active,
+                'quarter': param.quarter,
+                'year': param.year
             }
             parameters_data.append(param_data)
         
@@ -1613,7 +1451,9 @@ def update_incentive_parameter(param_id):
             'multiplier': parameter.multiplier,
             'min_threshold': parameter.min_threshold,
             'max_threshold': parameter.max_threshold,
-            'is_active': parameter.is_active
+            'is_active': parameter.is_active,
+            'quarter': parameter.quarter,
+            'year': parameter.year
         }
         
         return jsonify(param_data), 200
@@ -1723,19 +1563,19 @@ def seed_data():
         
         db.session.commit()
         
-        # Get created teams
+        # Get team references
         legal_team = Team.query.filter_by(name='Legal Team').first()
         loan_team = Team.query.filter_by(name='Loan Team').first()
         servicing_team = Team.query.filter_by(name='Servicing Team').first()
         
-        # Create employees with new fields
+        # Create employees
         employees_data = [
-            {'name': 'John', 'surname': 'Smith', 'employee_code': 'EMP001', 'email': 'john.smith@company.com', 'position': 'Senior Legal Counsel', 'salary': 120000, 'target': 100000, 'team_id': legal_team.id},
-            {'name': 'Sarah', 'surname': 'Johnson', 'employee_code': 'EMP002', 'email': 'sarah.johnson@company.com', 'position': 'Legal Assistant', 'salary': 65000, 'target': 50000, 'team_id': legal_team.id},
-            {'name': 'Mike', 'surname': 'Davis', 'employee_code': 'EMP003', 'email': 'mike.davis@company.com', 'position': 'Loan Officer', 'salary': 85000, 'target': 75000, 'team_id': loan_team.id},
-            {'name': 'Lisa', 'surname': 'Wilson', 'employee_code': 'EMP004', 'email': 'lisa.wilson@company.com', 'position': 'Underwriter', 'salary': 95000, 'target': 85000, 'team_id': loan_team.id},
-            {'name': 'Tom', 'surname': 'Brown', 'employee_code': 'EMP005', 'email': 'tom.brown@company.com', 'position': 'Customer Service Manager', 'salary': 75000, 'target': 60000, 'team_id': servicing_team.id},
-            {'name': 'Emily', 'surname': 'Chen', 'employee_code': 'EMP006', 'email': 'emily.chen@company.com', 'position': 'Service Representative', 'salary': 55000, 'target': 45000, 'team_id': servicing_team.id}
+            {'name': 'John', 'surname': 'Smith', 'employee_code': 'EMP001', 'category': 'Director', 'team_id': legal_team.id},
+            {'name': 'Sarah', 'surname': 'Johnson', 'employee_code': 'EMP002', 'category': 'Associate', 'team_id': legal_team.id},
+            {'name': 'Michael', 'surname': 'Wilson', 'employee_code': 'EMP003', 'category': 'Director', 'team_id': loan_team.id},
+            {'name': 'Lisa', 'surname': 'Davis', 'employee_code': 'EMP004', 'category': 'Associate', 'team_id': loan_team.id},
+            {'name': 'Tom', 'surname': 'Brown', 'employee_code': 'EMP005', 'category': 'Director', 'team_id': servicing_team.id},
+            {'name': 'Emily', 'surname': 'Chen', 'employee_code': 'EMP006', 'category': 'Associate', 'team_id': servicing_team.id}
         ]
         
         for emp_data in employees_data:
@@ -1757,16 +1597,20 @@ def seed_data():
         
         db.session.commit()
         
-        return jsonify({'message': 'Data seeded successfully'}), 200
+        return jsonify({'message': 'Successfully seeded initial data'}), 200
         
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/servicing/cash-flow/<asset_manager>', methods=['GET'])
 def get_asset_manager_cash_flow(asset_manager):
     """Get aggregated Cash Flow data for a specific Asset Manager from SQL Server"""
     try:
-        # Get quarter parameter from request (default to Q4 2024)
+        if not PYMSSQL_AVAILABLE:
+            return jsonify({'error': 'SQL Server connection not available. Please install pymssql.'}), 500
+            
+        # Get quarter parameter from request
         quarter = request.args.get('quarter', 'Q4')
         year = request.args.get('year', '2024')
         
@@ -1775,106 +1619,64 @@ def get_asset_manager_cash_flow(asset_manager):
         start_date = f"{year}-{quarter_range['start']}"
         end_date = f"{year}-{quarter_range['end']}"
         
-        # SQL Server Connection Placeholder - Uncomment and configure when ready
-        # import pyodbc
-        # try:
-        #     connection = pyodbc.connect(SQL_SERVER_CONNECTION_STRING)
-        #     cursor = connection.cursor()
-        #     
-        #     # Execute the aggregated query for the specific Asset Manager
-        #     query = f"""
-        #     SELECT 
-        #         AssetManager,
-        #         COUNT(*) as total_collections,
-        #         SUM(TotalAmount) as total_amount,
-        #         SUM(CASE WHEN CFType IN ('CF', 'SSA') THEN TotalAmount ELSE 0 END) as cash_flow_amount,
-        #         SUM(CASE WHEN CFType = 'CF' THEN TotalAmount ELSE 0 END) as cf_amount,
-        #         SUM(CASE WHEN CFType = 'SSA' THEN TotalAmount ELSE 0 END) as ssa_amount,
-        #         COUNT(CASE WHEN CFType IN ('CF', 'SSA') THEN 1 END) as cf_collections_count,
-        #         -- NCF calculation: count Non-CF collections where flag column = 0
-        #         COUNT(CASE WHEN CFType = 'Non-CF' AND FlagColumn = 0 THEN 1 END) as ncf_count
-        #     FROM (
-        #         SELECT 
-        #             TotalAmount,
-        #             FlagColumn,  -- Add the flag column from your SQL Server table
-        #             CASE 
-        #                 WHEN CollectionCategory IN (
-        #                     'Assignment Of Award – Sale Third Party', 
-        #                     'Cash In Court Third Party - Sale At Auction', 
-        #                     'Cash In Court Third Party - Servicing'
-        #                 ) THEN 'SSA'
-        #                 WHEN CollectionCategory IN (
-        #                     'Rent', 'Pspa', 'Sale Deed', 'Workout', 'Prepayment Partial', 
-        #                     'Prepayment Full', 'Loan Sale', 'Installment', 
-        #                     'Discounted Payoff  - Secured', 'Discounted Payoff  - Unsecured', 
-        #                     'Collateral Sale'
-        #                 ) THEN 'CF'
-        #                 WHEN CollectionCategory IN (
-        #                     'Cash In Court', 'Cash In Court Third Party - Secured', 
-        #                     'Cash In Court Third Party - Unsecured'
-        #                 ) THEN 'Legal'
-        #                 ELSE 'Non-CF'
-        #             END AS CFType,
-        #             AssetManager
-        #         FROM CollectionDetail
-        #         WHERE Country = 'ESPANA'
-        #         AND ReceivedDate BETWEEN '{start_date}' AND '{end_date}'
-        #         AND AssetManager = ?
-        #     ) AS subquery
-        #     GROUP BY AssetManager
-        #     """
-        #     
-        #     cursor.execute(query, (asset_manager,))
-        #     result = cursor.fetchone()
-        #     
-        #     if result:
-        #         cash_flow_data = {
-        #             'asset_manager': result[0],
-        #             'total_collections': result[1],
-        #             'total_amount': round(result[2], 2) if result[2] else 0,
-        #             'cash_flow_amount': round(result[3], 2) if result[3] else 0,  # CF + SAA
-        #             'cf_amount': round(result[4], 2) if result[4] else 0,
-        #             'ssa_amount': round(result[5], 2) if result[5] else 0,
-        #             'cf_collections_count': result[6],
-        #             'ncf_count': result[7],  # NCF count
-        #             'quarter': f'{quarter} {year}',
-        #             'query_period': f'{start_date} to {end_date}'
-        #         }
-        #     else:
-        #         cash_flow_data = {
-        #             'asset_manager': asset_manager,
-        #             'total_collections': 0,
-        #             'total_amount': 0,
-        #             'cash_flow_amount': 0,
-        #             'cf_amount': 0,
-        #             'ssa_amount': 0,
-        #             'cf_collections_count': 0,
-        #             'ncf_count': 0,
-        #             'quarter': f'{quarter} {year}',
-        #             'query_period': f'{start_date} to {end_date}',
-        #             'note': 'No data found for this Asset Manager'
-        #         }
-        #     
-        #     cursor.close()
-        #     connection.close()
-        #     
-        # except Exception as e:
-        #     return jsonify({'error': f'SQL Server connection failed: {str(e)}'}), 500
+        # Connect to SQL Server
+        conn = pymssql.connect(
+            server=SQL_SERVER_CONFIG['server'],
+            database=SQL_SERVER_CONFIG['database'],
+            user=SQL_SERVER_CONFIG['username'],
+            password=SQL_SERVER_CONFIG['password'],
+            port=SQL_SERVER_CONFIG['port']
+        )
         
-        # For now, return mock data (replace with actual SQL Server query above)
-        cash_flow_data = {
-            'asset_manager': asset_manager,
-            'total_collections': 150,
-            'total_amount': 2500000.00,
-            'cash_flow_amount': 1800000.00,  # CF + SAA amounts
-            'cf_amount': 1200000.00,
-            'ssa_amount': 600000.00,
-            'cf_collections_count': 85,
-            'ncf_count': 25,  # NCF count (Non-CF collections where flag = 0)
-            'quarter': f'{quarter} {year}',
-            'query_period': f'{start_date} to {end_date}',
-            'note': 'Mock data - replace with actual SQL Server query'
-        }
+        cursor = conn.cursor()
+        
+        # Execute the query for the specific Asset Manager
+        query = SERVICING_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
+        cursor.execute(query + " WHERE AssetManager = %s", (asset_manager,))
+        result = cursor.fetchone()
+        
+        if result:
+            cash_flow_data = {
+                'asset_manager': result[0],
+                'total_collections': result[1],
+                'total_amount': round(float(result[2]), 2),
+                'cash_flow_amount': round(float(result[3]), 2),
+                'cf_amount': round(float(result[4]), 2),
+                'ssa_amount': round(float(result[5]), 2),
+                'legal_amount': round(float(result[6]), 2),
+                'non_cf_amount': round(float(result[7]), 2),
+                'cf_collections_count': result[8],
+                'cf_count': result[9],
+                'ssa_count': result[10],
+                'legal_count': result[11],
+                'non_cf_count': result[12],
+                'ncf_count': result[13],
+                'quarter': f'{quarter} {year}',
+                'query_period': f'{start_date} to {end_date}'
+            }
+        else:
+            cash_flow_data = {
+                'asset_manager': asset_manager,
+                'total_collections': 0,
+                'total_amount': 0,
+                'cash_flow_amount': 0,
+                'cf_amount': 0,
+                'ssa_amount': 0,
+                'legal_amount': 0,
+                'non_cf_amount': 0,
+                'cf_collections_count': 0,
+                'cf_count': 0,
+                'ssa_count': 0,
+                'legal_count': 0,
+                'non_cf_count': 0,
+                'ncf_count': 0,
+                'quarter': f'{quarter} {year}',
+                'query_period': f'{start_date} to {end_date}',
+                'note': 'No data found for this Asset Manager'
+            }
+        
+        cursor.close()
+        conn.close()
         
         return jsonify(cash_flow_data), 200
         
@@ -1885,7 +1687,10 @@ def get_asset_manager_cash_flow(asset_manager):
 def get_legal_manager_performance(legal_manager):
     """Get aggregated Legal performance data for a specific Legal Manager from SQL Server"""
     try:
-        # Get quarter parameter from request (default to Q4 2024)
+        if not PYMSSQL_AVAILABLE:
+            return jsonify({'error': 'SQL Server connection not available. Please install pymssql.'}), 500
+            
+        # Get quarter parameter from request
         quarter = request.args.get('quarter', 'Q4')
         year = request.args.get('year', '2024')
         
@@ -1894,89 +1699,75 @@ def get_legal_manager_performance(legal_manager):
         start_date = f"{year}-{quarter_range['start']}"
         end_date = f"{year}-{quarter_range['end']}"
         
-        # SQL Server Connection Placeholder - Uncomment and configure when ready
-        # import pyodbc
-        # try:
-        #     connection = pyodbc.connect(SQL_SERVER_CONNECTION_STRING)
-        #     cursor = connection.cursor()
-        #     
-        #     # Execute the aggregated query for the specific Legal Manager
-        #     query = f"""
-        #     SELECT 
-        #         l.InternalLawyerName,
-        #         -- Lawsuit Presentation count
-        #         COUNT(CASE WHEN Bucket = 'Demands' THEN 1 END) as lawsuit_presentation_count,
-        #         -- Auction amount
-        #         SUM(CASE WHEN Bucket = 'Auction' THEN act.ActAmount ELSE 0 END) as auction_amount,
-        #         -- CDR amount (Assigment of awarding)
-        #         SUM(CASE WHEN Bucket = 'Assigment of awarding' THEN act.ActAmount ELSE 0 END) as cdr_amount,
-        #         -- Testimonies amount
-        #         SUM(CASE WHEN Bucket = 'Testimony' THEN act.ActAmount ELSE 0 END) as testimonies_amount,
-        #         -- Possessions amount
-        #         SUM(CASE WHEN Bucket = 'Possession' THEN act.ActAmount ELSE 0 END) as possessions_amount,
-        #         -- CIC amount (Cash In Court)
-        #         SUM(CASE WHEN Bucket = 'Cash In Court' THEN act.ActAmount ELSE 0 END) as cic_amount,
-        #         -- Total legal acts
-        #         COUNT(*) as total_legal_acts
-        #     FROM (
-        #         {LEGAL_TEAM_QUERY.format(start_date=start_date, end_date=end_date)}
-        #     ) AS legal_data
-        #     WHERE l.InternalLawyerName = ?
-        #     GROUP BY l.InternalLawyerName
-        #     """
-        #     
-        #     cursor.execute(query, (legal_manager,))
-        #     result = cursor.fetchone()
-        #     
-        #     if result:
-        #         legal_performance_data = {
-        #             'legal_manager': result[0],
-        #             'lawsuit_presentation_count': result[1] or 0,
-        #             'auction_amount': round(result[2], 2) if result[2] else 0,
-        #             'cdr_amount': round(result[3], 2) if result[3] else 0,
-        #             'testimonies_amount': round(result[4], 2) if result[4] else 0,
-        #             'possessions_amount': round(result[5], 2) if result[5] else 0,
-        #             'cic_amount': round(result[6], 2) if result[6] else 0,
-        #             'total_legal_acts': result[7] or 0,
-        #             'quarter': f'{quarter} {year}',
-        #             'query_period': f'{start_date} to {end_date}'
-        #         }
-        #     else:
-        #         legal_performance_data = {
-        #             'legal_manager': legal_manager,
-        #             'lawsuit_presentation_count': 0,
-        #             'auction_amount': 0,
-        #             'cdr_amount': 0,
-        #             'testimonies_amount': 0,
-        #             'possessions_amount': 0,
-        #             'cic_amount': 0,
-        #             'total_legal_acts': 0,
-        #             'quarter': f'{quarter} {year}',
-        #             'query_period': f'{start_date} to {end_date}',
-        #             'note': 'No data found for this Legal Manager'
-        #         }
-        #     
-        #     cursor.close()
-        #     connection.close()
-        #     
-        # except Exception as e:
-        #     return jsonify({'error': f'SQL Server connection failed: {str(e)}'}), 500
+        # Connect to SQL Server
+        conn = pymssql.connect(
+            server=SQL_SERVER_CONFIG['server'],
+            database=SQL_SERVER_CONFIG['database'],
+            user=SQL_SERVER_CONFIG['username'],
+            password=SQL_SERVER_CONFIG['password'],
+            port=SQL_SERVER_CONFIG['port']
+        )
         
-        # For now, return mock data (replace with actual SQL Server query above)
-        legal_performance_data = {
-            'legal_manager': legal_manager,
-            'lawsuit_presentation_count': 45,  # From SQL Server: COUNT WHERE Bucket = 'Demands'
-            'auction_amount': 95000.00,        # From SQL Server: SUM WHERE Bucket = 'Auction'
-            'cdr_amount': 70000.00,            # From SQL Server: SUM WHERE Bucket = 'Assigment of awarding'
-            'testimonies_amount': 22000.00,    # From SQL Server: SUM WHERE Bucket = 'Testimony'
-            'possessions_amount': 48000.00,    # From SQL Server: SUM WHERE Bucket = 'Possession'
-            'cic_amount': 28000.00,            # From SQL Server: SUM WHERE Bucket = 'Cash In Court'
-            'total_legal_acts': 150,           # From SQL Server: COUNT(*)
-            'quarter': f'{quarter} {year}',
-            'query_period': f'{start_date} to {end_date}',
-            'note': 'Mock data - replace with actual SQL Server query',
-            'sql_query_used': LEGAL_TEAM_QUERY.format(start_date=start_date, end_date=end_date)
-        }
+        cursor = conn.cursor()
+        
+        # Execute the aggregated query for the specific Legal Manager
+        query = f"""
+        SELECT 
+            l.InternalLawyerName,
+            -- Lawsuit Presentation count
+            COUNT(CASE WHEN Bucket = 'Demands' THEN 1 END) as lawsuit_presentation_count,
+            -- Auction amount
+            SUM(CASE WHEN Bucket = 'Auction' THEN act.ActAmount ELSE 0 END) as auction_amount,
+            -- CDR amount (Assigment of awarding)
+            SUM(CASE WHEN Bucket = 'Assigment of awarding' THEN act.ActAmount ELSE 0 END) as cdr_amount,
+            -- Testimonies amount
+            SUM(CASE WHEN Bucket = 'Testimony' THEN act.ActAmount ELSE 0 END) as testimonies_amount,
+            -- Possessions amount
+            SUM(CASE WHEN Bucket = 'Possession' THEN act.ActAmount ELSE 0 END) as possessions_amount,
+            -- CIC amount (Cash In Court)
+            SUM(CASE WHEN Bucket = 'Cash In Court' THEN act.ActAmount ELSE 0 END) as cic_amount,
+            -- Total legal acts
+            COUNT(*) as total_legal_acts
+        FROM (
+            {LEGAL_TEAM_QUERY.format(start_date=start_date, end_date=end_date)}
+        ) AS legal_data
+        WHERE l.InternalLawyerName = %s
+        GROUP BY l.InternalLawyerName
+        """
+        
+        cursor.execute(query, (legal_manager,))
+        result = cursor.fetchone()
+        
+        if result:
+            legal_performance_data = {
+                'legal_manager': result[0],
+                'lawsuit_presentation_count': result[1] or 0,
+                'auction_amount': round(float(result[2]), 2) if result[2] else 0,
+                'cdr_amount': round(float(result[3]), 2) if result[3] else 0,
+                'testimonies_amount': round(float(result[4]), 2) if result[4] else 0,
+                'possessions_amount': round(float(result[5]), 2) if result[5] else 0,
+                'cic_amount': round(float(result[6]), 2) if result[6] else 0,
+                'total_legal_acts': result[7] or 0,
+                'quarter': f'{quarter} {year}',
+                'query_period': f'{start_date} to {end_date}'
+            }
+        else:
+            legal_performance_data = {
+                'legal_manager': legal_manager,
+                'lawsuit_presentation_count': 0,
+                'auction_amount': 0,
+                'cdr_amount': 0,
+                'testimonies_amount': 0,
+                'possessions_amount': 0,
+                'cic_amount': 0,
+                'total_legal_acts': 0,
+                'quarter': f'{quarter} {year}',
+                'query_period': f'{start_date} to {end_date}',
+                'note': 'No data found for this Legal Manager'
+            }
+        
+        cursor.close()
+        conn.close()
         
         return jsonify(legal_performance_data), 200
         
@@ -2007,6 +1798,61 @@ def test_database():
             'message': f'Database connection failed: {str(e)}',
             'database_url': app.config['SQLALCHEMY_DATABASE_URI']
         }), 500
+
+@app.route('/api/teams/<int:team_id>/uploaded-data', methods=['GET'])
+def get_uploaded_team_data(team_id):
+    """Get uploaded data for a specific team"""
+    try:
+        team = Team.query.get_or_404(team_id)
+        
+        # Get quarter and year from query params (default to current)
+        current_date = datetime.now()
+        quarter = request.args.get('quarter', f'Q{(current_date.month - 1) // 3 + 1}')
+        year = request.args.get('year', str(current_date.year))
+        
+        if team.name.lower() == 'legal team':
+            data = LegalTeamData.query.filter_by(quarter=quarter, year=year).all()
+            team_data = [{
+                'legal_manager': d.legal_manager,
+                'employee_number': d.employee_number,
+                'category': d.category,
+                'quarterly_incentive': d.quarterly_incentive,
+                'team_leader': d.team_leader,
+                'lawsuit_presentation_target': d.lawsuit_presentation_target,
+                'auction_target': d.auction_target,
+                'cdr_target': d.cdr_target,
+                'testimonies_target': d.testimonies_target,
+                'possessions_target': d.possessions_target,
+                'cic_target': d.cic_target,
+                'created_at': d.created_at.isoformat(),
+                'updated_at': d.updated_at.isoformat()
+            } for d in data]
+        else:  # Servicing team
+            data = ServicingTeamData.query.filter_by(quarter=quarter, year=year).all()
+            team_data = [{
+                'asset_sales_manager': d.asset_sales_manager,
+                'employee_number': d.employee_number,
+                'category': d.category,
+                'quarter_incentive_base': d.quarter_incentive_base,
+                'team_leader': d.team_leader,
+                'main_portfolio': d.main_portfolio,
+                'cash_flow': d.cash_flow,
+                'cash_flow_target': d.cash_flow_target,
+                'ncf': d.ncf,
+                'ncf_target': d.ncf_target,
+                'created_at': d.created_at.isoformat(),
+                'updated_at': d.updated_at.isoformat()
+            } for d in data]
+        
+        return jsonify({
+            'team': team.name,
+            'quarter': quarter,
+            'year': year,
+            'data': team_data
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():

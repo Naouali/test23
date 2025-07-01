@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import * as React from 'react'
 import { 
   Users, 
   Building2, 
@@ -15,6 +15,15 @@ interface DashboardData {
   total_employees: number
   total_teams: number
   monthly_bonus_total: number
+  team_distribution: Array<{
+    name: string
+    value: number
+    color: string
+  }>
+  monthly_bonus_trend: Array<{
+    month: string
+    bonus: number
+  }>
   recent_calculations: Array<{
     id: number
     employee_name: string
@@ -24,10 +33,10 @@ interface DashboardData {
 }
 
 const Dashboard: React.FC = () => {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [dashboardData, setDashboardData] = React.useState<DashboardData | null>(null)
+  const [loading, setLoading] = React.useState(true)
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchDashboardData()
   }, [])
 
@@ -43,22 +52,7 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const teamData = [
-    { name: 'Legal Team', value: 2, color: '#3B82F6' },
-    { name: 'Loan Team', value: 2, color: '#10B981' },
-    { name: 'Servicing Team', value: 2, color: '#F59E0B' }
-  ]
-
-  const monthlyData = [
-    { month: 'Jan', bonus: 45000 },
-    { month: 'Feb', bonus: 52000 },
-    { month: 'Mar', bonus: 48000 },
-    { month: 'Apr', bonus: 61000 },
-    { month: 'May', bonus: 55000 },
-    { month: 'Jun', bonus: 67000 }
-  ]
-
-  if (loading) {
+  if (loading || !dashboardData) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -83,7 +77,7 @@ const Dashboard: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
               <p className="text-2xl font-bold text-gray-900">
-                {dashboardData?.total_employees || 0}
+                {dashboardData.total_employees}
               </p>
             </div>
           </div>
@@ -97,7 +91,7 @@ const Dashboard: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Teams</p>
               <p className="text-2xl font-bold text-gray-900">
-                {dashboardData?.total_teams || 0}
+                {dashboardData.total_teams}
               </p>
             </div>
           </div>
@@ -111,63 +105,54 @@ const Dashboard: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Monthly Bonus Total</p>
               <p className="text-2xl font-bold text-gray-900">
-                ${dashboardData?.monthly_bonus_total?.toLocaleString() || '0'}
+                €{dashboardData.monthly_bonus_total.toLocaleString()}
               </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <TrendingUp className="h-6 w-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Avg. Performance</p>
-              <p className="text-2xl font-bold text-gray-900">85%</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Charts Section */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Bonus Trend */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Bonus Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Bonus']} />
-              <Bar dataKey="bonus" fill="#3B82F6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
         {/* Team Distribution */}
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Team Distribution</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={teamData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {teamData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={dashboardData.team_distribution}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {dashboardData.team_distribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Monthly Bonus Trend */}
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Bonus Trend</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dashboardData.monthly_bonus_trend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="bonus" fill="#3B82F6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
@@ -176,13 +161,13 @@ const Dashboard: React.FC = () => {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Bonus Calculations</h3>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead>
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Employee
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bonus Amount
+                  Amount
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
@@ -190,21 +175,29 @@ const Dashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {dashboardData?.recent_calculations.map((calculation) => (
-                <tr key={calculation.id}>
+              {dashboardData.recent_calculations.map((calc) => (
+                <tr key={calc.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <User className="h-5 w-5 text-gray-400 mr-3" />
-                      <div className="text-sm font-medium text-gray-900">
-                        {calculation.employee_name}
+                      <div className="flex-shrink-0 h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
+                        <User className="h-4 w-4 text-gray-500" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {calc.employee_name}
+                        </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${calculation.bonus_amount.toLocaleString()}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      €{calc.bonus_amount.toLocaleString()}
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(calculation.calculation_date).toLocaleDateString()}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {new Date(calc.calculation_date).toLocaleDateString()}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import * as React from 'react';
 import { Download, Upload, Save, X } from "lucide-react";
 
 interface Employee {
@@ -74,451 +74,140 @@ interface TeamsProps {
   setActiveTeam: (team: string | null) => void;
 }
 
-const mockTeams: { [key: string]: Team } = {
-  legal: {
-    id: "legal",
-    name: "Legal Team",
-    description: "Legal and compliance team",
-    employees: [
-      { 
-        id: 1, 
-        name: "Alice", 
-        surname: "Smith", 
-        employee_code: "L001", 
-        email: "alice.smith@company.com", 
-        position: "Senior Legal Counsel", 
-        salary: 120000, 
-        target: 10000, 
-        // Servicing team fields (not used for Legal)
-        asset_sales_manager: "", 
-        employee_number: "", 
-        category: "Senior Associate", 
-        quarter_incentive_base: 0,
-        team_leader: "",
-        main_portfolio: "",
-        cash_flow: null, 
-        cash_flow_target: null, 
-        cash_flow_percentage: 0, 
-        ncf: null, 
-        ncf_target: null, 
-        ncf_percentage: 0, 
-        incentive_cf: 0, 
-        total_incentive: 0, 
-        q1_incentive: 0, 
-        // Legal team fields (actual input format)
-        legal_manager: "Alice Smith", 
-        employee_hash: "L001", 
-        quarterly_incentive: 120000, 
-        lawsuit_presentation_target: 50, 
-        auction_target: 100000, 
-        cdr_target: 75000, 
-        testimonies_target: 25000, 
-        possessions_target: 50000, 
-        cic_target: 30000, 
-        // Calculated fields (from SQL Server + formulas)
-        lawsuit_presentation: 45, 
-        lawsuit_presentation_percentage: 90, 
-        lawsuit_weight: 20, 
-        auction: 95000, 
-        auction_percentage: 95, 
-        auction_weight: 25, 
-        cdr: 70000, 
-        cdr_percentage: 93, 
-        cdr_weight: 20, 
-        testimonies: 22000, 
-        testimonies_percentage: 88, 
-        testimonies_weight: 15, 
-        possessions: 48000, 
-        possessions_percentage: 96, 
-        possessions_weight: 10, 
-        cic: 28000, 
-        cic_percentage: 93, 
-        cic_weight: 10, 
-        targets_fulfillment: 92, 
-        incentive_percentage: 85, 
-        data_quality: 95, 
-        q4_incentive: 68 
-      },
-      { 
-        id: 2, 
-        name: "Bob", 
-        surname: "Jones", 
-        employee_code: "L002", 
-        email: "bob.jones@company.com", 
-        position: "Legal Assistant", 
-        salary: 65000, 
-        target: 12000, 
-        // Servicing team fields (not used for Legal)
-        asset_sales_manager: "", 
-        employee_number: "", 
-        category: "Associate", 
-        quarter_incentive_base: 0,
-        team_leader: "",
-        main_portfolio: "",
-        cash_flow: null, 
-        cash_flow_target: null, 
-        cash_flow_percentage: 0, 
-        ncf: null, 
-        ncf_target: null, 
-        ncf_percentage: 0, 
-        incentive_cf: 0, 
-        total_incentive: 0, 
-        q1_incentive: 0, 
-        // Legal team fields (actual input format)
-        legal_manager: "Bob Jones", 
-        employee_hash: "L002", 
-        quarterly_incentive: 65000, 
-        lawsuit_presentation_target: 30, 
-        auction_target: 60000, 
-        cdr_target: 45000, 
-        testimonies_target: 15000, 
-        possessions_target: 30000, 
-        cic_target: 20000, 
-        // Calculated fields (from SQL Server + formulas)
-        lawsuit_presentation: 28, 
-        lawsuit_presentation_percentage: 93, 
-        lawsuit_weight: 20, 
-        auction: 58000, 
-        auction_percentage: 97, 
-        auction_weight: 25, 
-        cdr: 43000, 
-        cdr_percentage: 96, 
-        cdr_weight: 20, 
-        testimonies: 14500, 
-        testimonies_percentage: 97, 
-        testimonies_weight: 15, 
-        possessions: 29500, 
-        possessions_percentage: 98, 
-        possessions_weight: 10, 
-        cic: 19500, 
-        cic_percentage: 98, 
-        cic_weight: 10, 
-        targets_fulfillment: 96, 
-        incentive_percentage: 90, 
-        data_quality: 98, 
-        q4_incentive: 72 
-      },
-    ],
-  },
-  loan: {
-    id: "loan",
-    name: "Loan Team",
-    description: "Loan processing and underwriting team",
-    employees: [
-      { 
-        id: 3, 
-        name: "Carol", 
-        surname: "White", 
-        employee_code: "LN01", 
-        email: "carol.white@company.com", 
-        position: "Loan Officer", 
-        salary: 75000, 
-        target: 9000, 
-        // Servicing team fields (not used for Loan)
-        asset_sales_manager: "", 
-        employee_number: "", 
-        category: "Associate", 
-        quarter_incentive_base: 0,
-        team_leader: "",
-        main_portfolio: "",
-        cash_flow: null, 
-        cash_flow_target: null, 
-        cash_flow_percentage: 0, 
-        ncf: null, 
-        ncf_target: null, 
-        ncf_percentage: 0, 
-        incentive_cf: 0, 
-        total_incentive: 0, 
-        q1_incentive: 0, 
-        // Legal team fields (not used for Loan)
-        legal_manager: "", 
-        employee_hash: "", 
-        quarterly_incentive: 0, 
-        lawsuit_presentation_target: 0, 
-        auction_target: 0, 
-        cdr_target: 0, 
-        testimonies_target: 0, 
-        possessions_target: 0, 
-        cic_target: 0, 
-        lawsuit_presentation: 0, 
-        lawsuit_presentation_percentage: 0, 
-        lawsuit_weight: 0, 
-        auction: 0, 
-        auction_percentage: 0, 
-        auction_weight: 0, 
-        cdr: 0, 
-        cdr_percentage: 0, 
-        cdr_weight: 0, 
-        testimonies: 0, 
-        testimonies_percentage: 0, 
-        testimonies_weight: 0, 
-        possessions: 0, 
-        possessions_percentage: 0, 
-        possessions_weight: 0, 
-        cic: 0, 
-        cic_percentage: 0, 
-        cic_weight: 0, 
-        targets_fulfillment: 0, 
-        incentive_percentage: 0, 
-        data_quality: 0, 
-        q4_incentive: 0 
-      },
-      { 
-        id: 4, 
-        name: "David", 
-        surname: "Black", 
-        employee_code: "LN02", 
-        email: "david.black@company.com", 
-        position: "Underwriter", 
-        salary: 85000, 
-        target: 11000, 
-        // Servicing team fields (not used for Loan)
-        asset_sales_manager: "", 
-        employee_number: "", 
-        category: "Senior Associate", 
-        quarter_incentive_base: 0,
-        team_leader: "",
-        main_portfolio: "",
-        cash_flow: null, 
-        cash_flow_target: null, 
-        cash_flow_percentage: 0, 
-        ncf: null, 
-        ncf_target: null, 
-        ncf_percentage: 0, 
-        incentive_cf: 0, 
-        total_incentive: 0, 
-        q1_incentive: 0, 
-        // Legal team fields (not used for Loan)
-        legal_manager: "", 
-        employee_hash: "", 
-        quarterly_incentive: 0, 
-        lawsuit_presentation_target: 0, 
-        auction_target: 0, 
-        cdr_target: 0, 
-        testimonies_target: 0, 
-        possessions_target: 0, 
-        cic_target: 0, 
-        lawsuit_presentation: 0, 
-        lawsuit_presentation_percentage: 0, 
-        lawsuit_weight: 0, 
-        auction: 0, 
-        auction_percentage: 0, 
-        auction_weight: 0, 
-        cdr: 0, 
-        cdr_percentage: 0, 
-        cdr_weight: 0, 
-        testimonies: 0, 
-        testimonies_percentage: 0, 
-        testimonies_weight: 0, 
-        possessions: 0, 
-        possessions_percentage: 0, 
-        possessions_weight: 0, 
-        cic: 0, 
-        cic_percentage: 0, 
-        cic_weight: 0, 
-        targets_fulfillment: 0, 
-        incentive_percentage: 0, 
-        data_quality: 0, 
-        q4_incentive: 0 
-      },
-    ],
-  },
-  servicing: {
-    id: "servicing",
-    name: "Servicing Team",
-    description: "Customer service and loan servicing team",
-    employees: [
-      { 
-        id: 5, 
-        name: "Eve", 
-        surname: "Brown", 
-        employee_code: "S001", 
-        email: "eve.brown@company.com", 
-        position: "Customer Service Rep", 
-        salary: 55000, 
-        target: 8000, 
-        // Servicing team fields (actual input format)
-        asset_sales_manager: "Eve Brown", 
-        employee_number: "S001", 
-        category: "Associate", 
-        quarter_incentive_base: 8000,
-        team_leader: "Anna Teamlead",
-        main_portfolio: "Portfolio A",
-        cash_flow: 8000, 
-        cash_flow_target: 10000, 
-        cash_flow_percentage: 80, 
-        ncf: 5000, 
-        ncf_target: 6000, 
-        ncf_percentage: 83, 
-        incentive_cf: 80, 
-        total_incentive: 83, 
-        q1_incentive: 66, 
-        // Legal team fields (not used for Servicing)
-        legal_manager: "", 
-        employee_hash: "", 
-        quarterly_incentive: 0, 
-        lawsuit_presentation_target: 0, 
-        auction_target: 0, 
-        cdr_target: 0, 
-        testimonies_target: 0, 
-        possessions_target: 0, 
-        cic_target: 0, 
-        lawsuit_presentation: 0, 
-        lawsuit_presentation_percentage: 0, 
-        lawsuit_weight: 0, 
-        auction: 0, 
-        auction_percentage: 0, 
-        auction_weight: 0, 
-        cdr: 0, 
-        cdr_percentage: 0, 
-        cdr_weight: 0, 
-        testimonies: 0, 
-        testimonies_percentage: 0, 
-        testimonies_weight: 0, 
-        possessions: 0, 
-        possessions_percentage: 0, 
-        possessions_weight: 0, 
-        cic: 0, 
-        cic_percentage: 0, 
-        cic_weight: 0, 
-        targets_fulfillment: 0, 
-        incentive_percentage: 0, 
-        data_quality: 0, 
-        q4_incentive: 0 
-      },
-      { 
-        id: 6, 
-        name: "Frank", 
-        surname: "Green", 
-        employee_code: "S002", 
-        email: "frank.green@company.com", 
-        position: "Servicing Specialist", 
-        salary: 60000, 
-        target: 9500, 
-        // Servicing team fields (actual input format)
-        asset_sales_manager: "Frank Green", 
-        employee_number: "S002", 
-        category: "Senior Associate", 
-        quarter_incentive_base: 9500,
-        team_leader: "Anna Teamlead",
-        main_portfolio: "Portfolio B",
-        cash_flow: 9500, 
-        cash_flow_target: 12000, 
-        cash_flow_percentage: 79, 
-        ncf: 6000, 
-        ncf_target: 7000, 
-        ncf_percentage: 86, 
-        incentive_cf: 0, 
-        total_incentive: 86, 
-        q1_incentive: 69, 
-        // Legal team fields (not used for Servicing)
-        legal_manager: "", 
-        employee_hash: "", 
-        quarterly_incentive: 0, 
-        lawsuit_presentation_target: 0, 
-        auction_target: 0, 
-        cdr_target: 0, 
-        testimonies_target: 0, 
-        possessions_target: 0, 
-        cic_target: 0, 
-        lawsuit_presentation: 0, 
-        lawsuit_presentation_percentage: 0, 
-        lawsuit_weight: 0, 
-        auction: 0, 
-        auction_percentage: 0, 
-        auction_weight: 0, 
-        cdr: 0, 
-        cdr_percentage: 0, 
-        cdr_weight: 0, 
-        testimonies: 0, 
-        testimonies_percentage: 0, 
-        testimonies_weight: 0, 
-        possessions: 0, 
-        possessions_percentage: 0, 
-        possessions_weight: 0, 
-        cic: 0, 
-        cic_percentage: 0, 
-        cic_weight: 0, 
-        targets_fulfillment: 0, 
-        incentive_percentage: 0, 
-        data_quality: 0, 
-        q4_incentive: 0 
-      },
-    ],
-  },
-};
+interface TeamMemberData {
+  id: number;
+  employee_name: string;
+  employee_code: string;
+  category: string;
+  team_leader: string;
+  quarter: string;
+  year: number;
+  // Legal Team fields
+  legal_manager?: string;
+  employee_hash?: string;
+  quarterly_incentive?: number;
+  lawsuit_presentation_target?: number;
+  auction_target?: number;
+  cdr_target?: number;
+  testimonies_target?: number;
+  possessions_target?: number;
+  cic_target?: number;
+  // Servicing Team fields
+  asset_sales_manager?: string;
+  employee_number?: string;
+  quarter_incentive_base?: number;
+  main_portfolio?: string;
+  cash_flow?: number;
+  cash_flow_target?: number;
+  ncf?: number;
+  ncf_target?: number;
+}
 
-const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
+const Teams = ({ activeTeam, setActiveTeam }: TeamsProps) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [uploadedEmployees, setUploadedEmployees] = React.useState<Employee[]>([]);
   const [showUploadPreview, setShowUploadPreview] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [teams, setTeams] = React.useState<{ [key: string]: Team }>({});
+  const [teamMembers, setTeamMembers] = React.useState<TeamMemberData[]>([]);
+  const [selectedQuarter, setSelectedQuarter] = React.useState<string>('Q4');
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
+  const [uploadedData, setUploadedData] = React.useState<TeamMemberData[]>([]);
+  const [currentQuarter, setCurrentQuarter] = React.useState<string>('');
+  const [currentYear, setCurrentYear] = React.useState<string>('');
 
-  const handleDownload = () => {
+  React.useEffect(() => {
+    fetchTeams();
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTeam) {
+      fetchUploadedData();
+    }
+  }, [activeTeam]);
+
+  const fetchTeams = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://localhost:5000/api/teams');
+      const data = await response.json();
+      const teamsMap = data.reduce((acc: { [key: string]: Team }, team: Team) => {
+        acc[team.id] = team;
+        return acc;
+      }, {});
+      setTeams(teamsMap);
+    } catch (err) {
+      setError('Failed to fetch teams');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUploadedData = async () => {
     if (!activeTeam) return;
     
-    let nonCalculatedColumns: string[] = [];
-    
-    // Define columns based on team type
-    if (activeTeam === 'servicing') {
-      nonCalculatedColumns = [
-        'Asset/Sales Manager',
-        'Employee Number', 
-        'Category',
-        'Quarter Incentive Base',
-        'Team Leader',
-        'Main Portfolio',
-        'Cash Flow',
-        'Cash Flow Target',
-        'NCF',
-        'NCF Target'
-      ];
-    } else if (activeTeam === 'legal') {
-      nonCalculatedColumns = [
-        'Legal Manager',
-        'Employee #',
-        'Category',
-        'Quarterly Incentive',
-        'Team Leader',
-        'Lawsuit Presentation Target (#)',
-        'Auction Target (€)',
-        'CDR Target (€)',
-        'Testimonies Target (€)',
-        'Possessions Target (€)',
-        'CIC Target (€)'
-      ];
-    } else if (activeTeam === 'loan') {
-      // Placeholder for loan team - can be expanded later
-      nonCalculatedColumns = [
-        'Loan Manager',
-        'Employee #',
-        'Category',
-        'Quarterly Incentive',
-        'Team Leader'
-      ];
+    try {
+      setLoading(true);
+      const response = await fetch(`http://localhost:5000/api/teams/${activeTeam}/uploaded-data`);
+      const data = await response.json();
+      setUploadedData(data.data);
+      setCurrentQuarter(data.quarter);
+      setCurrentYear(data.year);
+    } catch (err) {
+      setError('Failed to fetch uploaded data');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleDownload = async () => {
+    if (!activeTeam) return;
     
-    // Create CSV content with headers and sample data
-    const csvContent = [
-      nonCalculatedColumns.join(','), // Header row
-      // Sample data row (empty values for user to fill)
-      nonCalculatedColumns.map(() => '').join(',')
-    ].join('\n');
-    
-    // Create and download CSV file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${mockTeams[activeTeam].name}_Template_NonCalculated.csv`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    
-    setSuccess("CSV template downloaded successfully!");
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Map team names to backend IDs
+      const teamIdMap: { [key: string]: number } = {
+        legal: 1,
+        loan: 2,
+        servicing: 3
+      };
+      
+      const teamId = teamIdMap[activeTeam];
+      if (!teamId) {
+        throw new Error("Team not found");
+      }
+      
+      const response = await fetch(`http://localhost:5000/api/teams/${teamId}/download-template`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to download template");
+      }
+      
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a download link and trigger it
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${teams[activeTeam]?.name || activeTeam}_Members_Template.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setSuccess("Excel template downloaded successfully!");
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download template");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleUploadClick = () => {
@@ -529,6 +218,15 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
     if (!e.target.files || !e.target.files[0] || !activeTeam) return;
     
     const file = e.target.files[0];
+    
+    // Check file type
+    if (!file.name.endsWith('.xlsx')) {
+      setError('Please upload an Excel file (.xlsx)');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
     
     try {
       setLoading(true);
@@ -555,20 +253,25 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
         body: formData
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload file");
+        throw new Error(data.error || "Failed to upload file");
       }
       
-      const data = await response.json();
       setUploadedEmployees(data.employees);
       setShowUploadPreview(true);
       setSuccess(`File processed successfully. ${data.employees.length} employees found.`);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to upload file");
+      setShowUploadPreview(false);
+      setUploadedEmployees([]);
     } finally {
       setLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -616,7 +319,7 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
       }
       
       const data = await response.json();
-      setSuccess(`Successfully saved ${data.saved_count} team members to ${mockTeams[activeTeam].name} for ${data.quarter} ${data.year}`);
+      setSuccess(`Successfully saved ${data.saved_count} team members to ${teams[activeTeam]?.name || activeTeam} for ${data.quarter} ${data.year}`);
       setShowUploadPreview(false);
       setUploadedEmployees([]);
       
@@ -640,6 +343,88 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
     }
   };
 
+  const renderTable = () => {
+    if (!activeTeam || !teams[activeTeam]) return null;
+    
+    const isLegalTeam = teams[activeTeam].name.toLowerCase() === 'legal team';
+    
+    return (
+      <div className="mt-4 overflow-x-auto">
+        <h3 className="text-lg font-semibold mb-2">
+          Uploaded Data for {teams[activeTeam].name} - {currentQuarter} {currentYear}
+        </h3>
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              {isLegalTeam ? (
+                <>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Legal Manager</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee #</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team Leader</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quarterly Incentive</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lawsuit Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Auction Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CDR Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Testimonies Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Possessions Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CIC Target</th>
+                </>
+              ) : (
+                <>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset/Sales Manager</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee #</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team Leader</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quarter Incentive Base</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Main Portfolio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cash Flow</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cash Flow Target</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NCF</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NCF Target</th>
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {uploadedData.map((data, index) => (
+              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                {isLegalTeam ? (
+                  <>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.legal_manager}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.employee_number}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.category}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.team_leader}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.quarterly_incentive}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.lawsuit_presentation_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.auction_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.cdr_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.testimonies_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.possessions_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.cic_target}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.asset_sales_manager}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.employee_number}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.category}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.team_leader}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.quarter_incentive_base}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.main_portfolio}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.cash_flow}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.cash_flow_target}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.ncf}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.ncf_target}</td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   // If no team is selected, show team overview
   if (!activeTeam) {
     return (
@@ -648,7 +433,7 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
         <p className="text-gray-600 mb-6">Select a team from the sidebar to view details.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {Object.values(mockTeams).map((team) => (
+          {Object.values(teams).map((team) => (
             <div key={team.id} className="bg-white p-6 rounded-lg shadow border">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">{team.name}</h3>
               <p className="text-gray-600 text-sm mb-4">{team.description}</p>
@@ -663,7 +448,7 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
   }
 
   // Show selected team details
-  const selectedTeam = mockTeams[activeTeam];
+  const selectedTeam = teams[activeTeam];
   if (!selectedTeam) {
     return (
       <div className="p-8">
@@ -681,14 +466,16 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
 
       {/* Error and Success Messages */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-800">{error}</p>
+        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+          <p className="font-medium">Error</p>
+          <p>{error}</p>
         </div>
       )}
       
       {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-green-800">{success}</p>
+        <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+          <p className="font-medium">Success</p>
+          <p>{success}</p>
         </div>
       )}
 
@@ -811,108 +598,7 @@ const Teams: React.FC<TeamsProps> = ({ activeTeam, setActiveTeam }) => {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Asset/Sales Manager
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Employee Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cash Flow
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    CF Target
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    % CF Target
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Incentive % CF
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    NCF
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    NCF Target
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    % NCF Target
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Incentive %
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Q1 Incentive (80%)
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {uploadedEmployees.map((employee, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {employee.asset_sales_manager}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {employee.employee_number}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {employee.category}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      €{employee.cash_flow?.toLocaleString() || 0}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      €{employee.cash_flow_target?.toLocaleString() || 0}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        employee.cash_flow_percentage >= 100 ? 'bg-green-100 text-green-800' :
-                        employee.cash_flow_percentage >= 90 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {employee.cash_flow_percentage}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {employee.incentive_cf}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      €{employee.ncf?.toLocaleString() || 0}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      €{employee.ncf_target?.toLocaleString() || 0}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        employee.ncf_percentage >= 100 ? 'bg-green-100 text-green-800' :
-                        employee.ncf_percentage >= 90 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {employee.ncf_percentage}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {employee.total_incentive}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        {employee.q1_incentive}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {renderTable()}
           </div>
         </div>
       )}
