@@ -40,19 +40,19 @@ const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard',
       label: 'Dashboard',
       icon: LayoutDashboard,
-      href: '#'
+      href: '#dashboard'
     },
     {
       id: 'incentives',
       label: 'Incentive Parameters',
       icon: Settings,
-      href: '#'
+      href: '#incentives'
     },
     {
       id: 'performance',
       label: 'Performance Data',
       icon: BarChart3,
-      href: '#'
+      href: '#performance'
     }
   ]
 
@@ -80,6 +80,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const handleTeamClick = (teamId: string) => {
     setActiveSection('teams')
     setActiveTeam(teamId)
+    window.location.hash = 'teams'
+  }
+
+  const handleNavigationClick = (sectionId: string) => {
+    setActiveSection(sectionId)
+    window.location.hash = sectionId
   }
 
   return (
@@ -119,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => handleNavigationClick(item.id)}
                 className={`sidebar-item w-full ${
                   activeSection === item.id ? 'active' : ''
                 } ${collapsed ? 'justify-center px-2' : ''}`}
@@ -135,7 +141,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="pt-4">
             <button
               onClick={() => !collapsed && setTeamsExpanded(!teamsExpanded)}
-              className={`sidebar-item w-full ${collapsed ? 'justify-center px-2' : ''}`}
+              className={`sidebar-item w-full ${
+                activeSection === 'teams' ? 'active' : ''
+              } ${collapsed ? 'justify-center px-2' : ''}`}
               title={collapsed ? 'Teams' : undefined}
             >
               <Users className={`h-5 w-5 ${collapsed ? '' : 'mr-3'}`} />

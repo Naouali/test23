@@ -8,9 +8,62 @@ import PerformanceData from '../components/PerformanceData'
 import Teams from '../components/Teams'
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState('dashboard')
-  const [activeTeam, setActiveTeam] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState(() => {
+    // Try to get the saved section from localStorage, default to 'dashboard'
+    if (typeof window !== 'undefined') {
+      const savedSection = localStorage.getItem('activeSection');
+      // Check if we have a valid section saved
+      if (savedSection && ['dashboard', 'incentives', 'performance', 'teams'].includes(savedSection)) {
+        return savedSection;
+      }
+    }
+    return 'dashboard';
+  })
+
+  const [activeTeam, setActiveTeam] = useState<string | null>(() => {
+    // Try to get the saved team from localStorage
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeTeam');
+    }
+    return null;
+  })
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Save activeSection to localStorage whenever it changes
+  useEffect(() => {
+    if (activeSection) {
+      localStorage.setItem('activeSection', activeSection);
+    }
+  }, [activeSection])
+
+  // Save activeTeam to localStorage whenever it changes
+  useEffect(() => {
+    if (activeTeam) {
+      localStorage.setItem('activeTeam', activeTeam);
+    } else {
+      localStorage.removeItem('activeTeam');
+    }
+  }, [activeTeam])
+
+  // Handle navigation changes
+  useEffect(() => {
+    const handleNavigation = () => {
+      const path = window.location.hash.slice(1) || 'dashboard';
+      if (['dashboard', 'incentives', 'performance', 'teams'].includes(path)) {
+        setActiveSection(path);
+      }
+    };
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleNavigation);
+    // Handle initial navigation
+    handleNavigation();
+
+    return () => {
+      window.removeEventListener('hashchange', handleNavigation);
+    };
+  }, []);
 
   const renderContent = () => {
     switch (activeSection) {

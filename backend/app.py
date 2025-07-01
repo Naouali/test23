@@ -215,7 +215,6 @@ class Team(db.Model):
     description = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     employees = db.relationship('Employee', backref='team', lazy=True)
-    incentive_parameters = db.relationship('IncentiveParameter', backref='team', lazy=True)
     team_member_data = db.relationship('TeamMemberData', backref='team', lazy=True)
 
 class Employee(db.Model):
@@ -241,15 +240,9 @@ class PerformanceRecord(db.Model):
 
 class IncentiveParameter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    team_id = db.Column(db.Integer, db.ForeignKey('team.id'), nullable=False)
-    category = db.Column(db.String(50), nullable=False)  # Analyst, Associate, Senior Associate
-    base_bonus = db.Column(db.Float, default=0.0)  # Base bonus percentage
-    parameter_name = db.Column(db.String(100), nullable=False)
-    base_value = db.Column(db.Float, default=0.0)
-    multiplier = db.Column(db.Float, default=1.0)
-    min_threshold = db.Column(db.Float, default=0.0)
-    max_threshold = db.Column(db.Float, default=100.0)
-    is_active = db.Column(db.Boolean, default=True)
+    team = db.Column(db.String(50), nullable=False)  # 'Legal', 'Loan', or 'Servicing'
+    category = db.Column(db.String(50), nullable=False)  # 'Analyst' or 'Associate'
+    base_salary = db.Column(db.Float, nullable=False)
     quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
     year = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -373,6 +366,38 @@ class ServicingTeamData(db.Model):
     cash_flow_target = db.Column(db.Float, nullable=False)
     ncf = db.Column(db.Float, nullable=False)
     ncf_target = db.Column(db.Float, nullable=False)
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class LoanTeamData(db.Model):
+    """Model to store Loan team data from Excel uploads"""
+    id = db.Column(db.Integer, primary_key=True)
+    quarter = db.Column(db.String(2), nullable=False)  # Q1, Q2, Q3, Q4
+    year = db.Column(db.Integer, nullable=False)
+    
+    # Excel columns (exact names)
+    loan_manager = db.Column(db.String(200), nullable=False)
+    employee_number = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    quarter_incentive_base = db.Column(db.Float, nullable=False)
+    team_leader = db.Column(db.String(200), nullable=False)
+    portfolio = db.Column(db.String(200), nullable=False)
+    loan_amount = db.Column(db.Float, nullable=False)
+    loan_target = db.Column(db.Float, nullable=False)
+    npl_amount = db.Column(db.Float, nullable=False)
+    npl_target = db.Column(db.Float, nullable=False)
+    recovery_rate = db.Column(db.Float, nullable=False)
+    recovery_target = db.Column(db.Float, nullable=False)
+    
+    # Calculated fields
+    loan_target_percentage = db.Column(db.Float)
+    npl_target_percentage = db.Column(db.Float)
+    recovery_target_percentage = db.Column(db.Float)
+    data_quality = db.Column(db.Float)
+    total_incentive = db.Column(db.Float)
+    q4_incentive = db.Column(db.Float)
     
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -559,7 +584,7 @@ def download_team_template(team_id):
                 30000,                # CIC Target (€)
                 '=Z2/AA2*100',        # % CIC (calculated)
                 10,                   # CIC Weight
-                '=H2*I2/100+J2*L2/100+N2*P2/100+R2*T2/100+V2*X2/100+Z2*AB2/100',  # % Targets Fulfillment (calculated)
+                '=H2*I2/100+J2*L2/100+N2*P2/100+R2*T2/100+V2*X2/100+Z2*AB2/100',
                 '=AC2*0.85',          # % Incentive (calculated)
                 '=RANDBETWEEN(85,100)',  # % Data Quality (calculated)
                 '=AD2*AE2/100',       # TOTAL INCENTIVE % (calculated)
@@ -568,6 +593,54 @@ def download_team_template(team_id):
             
             # Calculated columns for Legal team (blue background)
             calculated_columns = [8, 12, 16, 20, 24, 28, 30, 31, 32, 33]
+            
+        elif team.name.lower() == 'loan team':
+            # Loan team template
+            headers = [
+                'Loan Manager',
+                'Employee Number',
+                'Category',
+                'Quarter Incentive Base',
+                'Team Leader',
+                'Portfolio',
+                'Loan Amount',
+                'Loan Target',
+                '% Loan Target',
+                'NPL Amount',
+                'NPL Target',
+                '% NPL Target',
+                'Recovery Rate',
+                'Recovery Target',
+                '% Recovery Target',
+                '% Data Quality',
+                'TOTAL INCENTIVE %',
+                'Q4 TO BE PAID INCENTIVE (80%)'
+            ]
+            
+            # Sample data for Loan team
+            sample_data = [
+                'John Doe',           # Loan Manager
+                'LOAN001',            # Employee Number
+                'Senior Analyst',      # Category
+                75000,                # Quarter Incentive Base
+                'Jane Smith',         # Team Leader
+                'Portfolio B',        # Portfolio
+                500000,              # Loan Amount
+                600000,              # Loan Target
+                '=G2/H2*100',        # % Loan Target (calculated)
+                100000,              # NPL Amount
+                120000,              # NPL Target
+                '=J2/K2*100',        # % NPL Target (calculated)
+                85,                  # Recovery Rate
+                90,                  # Recovery Target
+                '=M2/N2*100',        # % Recovery Target (calculated)
+                '=RANDBETWEEN(85,100)',  # % Data Quality (calculated)
+                '=IF(I2>=100,1.2,IF(I2>=90,1.1,IF(I2>=80,1,0.8)))*IF(L2>=100,1.2,IF(L2>=90,1.1,IF(L2>=80,1,0.8)))*IF(O2>=100,1.2,IF(O2>=90,1.1,IF(O2>=80,1,0.8)))',  # TOTAL INCENTIVE % (calculated)
+                '=Q2*0.8'            # Q4 TO BE PAID INCENTIVE (80%) (calculated)
+            ]
+            
+            # Calculated columns for Loan team (blue background)
+            calculated_columns = [9, 12, 15, 16, 17, 18]
             
         else:
             # Servicing team template (18 columns) - existing structure
@@ -702,7 +775,7 @@ def upload_team_members(team_id):
         current_quarter = f'Q{(current_month - 1) // 3 + 1}'
         
         # Define required columns and process data based on team type
-        if team.name.lower() == 'legal team':
+        if team.name.lower() == 'legal':
             required_columns = [
                 'Legal Manager',
                 'Employee #',
@@ -747,7 +820,60 @@ def upload_team_members(team_id):
                     cic_target=float(row['CIC Target (€)']) if not pd.isna(row['CIC Target (€)']) else 0
                 )
                 db.session.add(legal_data)
+                
+        elif team.name.lower() == 'loan':
+            required_columns = [
+                'Loan Manager',
+                'Employee Number',
+                'Category',
+                'Quarter Incentive Base',
+                'Team Leader',
+                'Portfolio',
+                'Loan Amount',
+                'Loan Target',
+                'NPL Amount',
+                'NPL Target',
+                'Recovery Rate',
+                'Recovery Target'
+            ]
             
+            # Check for missing required columns
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
+            
+            # Clear existing data for this quarter/year
+            LoanTeamData.query.filter_by(quarter=current_quarter, year=current_year).delete()
+            
+            # Process each row
+            for _, row in df.iterrows():
+                # Skip empty rows
+                if pd.isna(row['Loan Manager']) or pd.isna(row['Employee Number']):
+                    continue
+                
+                loan_data = LoanTeamData(
+                    quarter=current_quarter,
+                    year=current_year,
+                    loan_manager=str(row['Loan Manager']).strip(),
+                    employee_number=str(row['Employee Number']).strip(),
+                    category=str(row['Category']).strip(),
+                    quarter_incentive_base=float(row['Quarter Incentive Base']) if not pd.isna(row['Quarter Incentive Base']) else 0,
+                    team_leader=str(row['Team Leader']).strip(),
+                    portfolio=str(row['Portfolio']).strip(),
+                    loan_amount=float(row['Loan Amount']) if not pd.isna(row['Loan Amount']) else 0,
+                    loan_target=float(row['Loan Target']) if not pd.isna(row['Loan Target']) else 0,
+                    npl_amount=float(row['NPL Amount']) if not pd.isna(row['NPL Amount']) else 0,
+                    npl_target=float(row['NPL Target']) if not pd.isna(row['NPL Target']) else 0,
+                    recovery_rate=float(row['Recovery Rate']) if not pd.isna(row['Recovery Rate']) else 0,
+                    recovery_target=float(row['Recovery Target']) if not pd.isna(row['Recovery Target']) else 0,
+                    
+                    # Calculate percentages
+                    loan_target_percentage=float(row['Loan Amount']) / float(row['Loan Target']) * 100 if not pd.isna(row['Loan Amount']) and not pd.isna(row['Loan Target']) and float(row['Loan Target']) != 0 else 0,
+                    npl_target_percentage=float(row['NPL Amount']) / float(row['NPL Target']) * 100 if not pd.isna(row['NPL Amount']) and not pd.isna(row['NPL Target']) and float(row['NPL Target']) != 0 else 0,
+                    recovery_target_percentage=float(row['Recovery Rate']) / float(row['Recovery Target']) * 100 if not pd.isna(row['Recovery Rate']) and not pd.isna(row['Recovery Target']) and float(row['Recovery Target']) != 0 else 0
+                )
+                db.session.add(loan_data)
+                
         else:  # Servicing team
             required_columns = [
                 'Asset/Sales Manager',
@@ -1332,27 +1458,14 @@ def get_incentive_parameters():
     """Get all incentive parameters"""
     try:
         parameters = IncentiveParameter.query.all()
-        parameters_data = []
-        
-        for param in parameters:
-            param_data = {
-                'id': param.id,
-                'team_id': param.team_id,
-                'team_name': param.team.name,
-                'category': param.category,
-                'base_bonus': param.base_bonus,
-                'parameter_name': param.parameter_name,
-                'base_value': param.base_value,
-                'multiplier': param.multiplier,
-                'min_threshold': param.min_threshold,
-                'max_threshold': param.max_threshold,
-                'is_active': param.is_active,
-                'quarter': param.quarter,
-                'year': param.year
-            }
-            parameters_data.append(param_data)
-        
-        return jsonify(parameters_data), 200
+        return jsonify([{
+            'id': p.id,
+            'team': p.team,
+            'category': p.category,
+            'base_salary': p.base_salary,
+            'quarter': p.quarter,
+            'year': p.year
+        } for p in parameters])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1360,103 +1473,54 @@ def get_incentive_parameters():
 def create_incentive_parameter():
     """Create a new incentive parameter"""
     try:
-        data = request.get_json()
+        data = request.json
         
         # Validate required fields
-        required_fields = ['team_id', 'category', 'base_bonus', 'quarter', 'year']
+        required_fields = ['team', 'category', 'base_salary', 'quarter', 'year']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
-        # Check if team exists
-        team = Team.query.get(data['team_id'])
-        if not team:
-            return jsonify({'error': 'Team not found'}), 404
+        # Validate team
+        if data['team'] not in ['Legal', 'Loan', 'Servicing']:
+            return jsonify({'error': 'Invalid team. Must be Legal, Loan, or Servicing'}), 400
+        
+        # Validate category
+        if data['category'] not in ['Analyst', 'Associate']:
+            return jsonify({'error': 'Invalid category. Must be either Analyst or Associate'}), 400
+        
+        # Validate quarter
+        if data['quarter'] not in ['Q1', 'Q2', 'Q3', 'Q4']:
+            return jsonify({'error': 'Invalid quarter. Must be Q1, Q2, Q3, or Q4'}), 400
+        
+        # Validate base salary
+        try:
+            base_salary = float(data['base_salary'])
+            if base_salary <= 0:
+                return jsonify({'error': 'Base salary must be greater than 0'}), 400
+        except ValueError:
+            return jsonify({'error': 'Invalid base salary value'}), 400
         
         # Create new parameter
-        new_parameter = IncentiveParameter(
-            team_id=data['team_id'],
+        parameter = IncentiveParameter(
+            team=data['team'],
             category=data['category'],
-            base_bonus=data.get('base_bonus', 0.0),
-            parameter_name=f"{data['category']}_bonus",  # Auto-generate parameter name
-            base_value=data.get('base_value', 0.0),
-            multiplier=data.get('multiplier', 1.0),
-            min_threshold=data.get('min_threshold', 0.0),
-            max_threshold=data.get('max_threshold', 100.0),
-            is_active=data.get('is_active', True),
+            base_salary=base_salary,
             quarter=data['quarter'],
-            year=data['year']
+            year=int(data['year'])
         )
         
-        db.session.add(new_parameter)
+        db.session.add(parameter)
         db.session.commit()
         
-        # Return the created parameter
-        param_data = {
-            'id': new_parameter.id,
-            'team_id': new_parameter.team_id,
-            'team_name': new_parameter.team.name,
-            'category': new_parameter.category,
-            'base_bonus': new_parameter.base_bonus,
-            'parameter_name': new_parameter.parameter_name,
-            'base_value': new_parameter.base_value,
-            'multiplier': new_parameter.multiplier,
-            'min_threshold': new_parameter.min_threshold,
-            'max_threshold': new_parameter.max_threshold,
-            'is_active': new_parameter.is_active,
-            'quarter': new_parameter.quarter,
-            'year': new_parameter.year
-        }
-        
-        return jsonify(param_data), 201
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/incentives/<int:param_id>', methods=['PUT'])
-def update_incentive_parameter(param_id):
-    """Update an existing incentive parameter"""
-    try:
-        parameter = IncentiveParameter.query.get_or_404(param_id)
-        data = request.get_json()
-        
-        # Update fields if provided
-        if 'category' in data:
-            parameter.category = data['category']
-        if 'base_bonus' in data:
-            parameter.base_bonus = data['base_bonus']
-        if 'base_value' in data:
-            parameter.base_value = data['base_value']
-        if 'multiplier' in data:
-            parameter.multiplier = data['multiplier']
-        if 'min_threshold' in data:
-            parameter.min_threshold = data['min_threshold']
-        if 'max_threshold' in data:
-            parameter.max_threshold = data['max_threshold']
-        if 'is_active' in data:
-            parameter.is_active = data['is_active']
-        
-        db.session.commit()
-        
-        # Return the updated parameter
-        param_data = {
+        return jsonify({
             'id': parameter.id,
-            'team_id': parameter.team_id,
-            'team_name': parameter.team.name,
+            'team': parameter.team,
             'category': parameter.category,
-            'base_bonus': parameter.base_bonus,
-            'parameter_name': parameter.parameter_name,
-            'base_value': parameter.base_value,
-            'multiplier': parameter.multiplier,
-            'min_threshold': parameter.min_threshold,
-            'max_threshold': parameter.max_threshold,
-            'is_active': parameter.is_active,
+            'base_salary': parameter.base_salary,
             'quarter': parameter.quarter,
             'year': parameter.year
-        }
-        
-        return jsonify(param_data), 200
+        }), 201
         
     except Exception as e:
         db.session.rollback()
@@ -1466,11 +1530,14 @@ def update_incentive_parameter(param_id):
 def delete_incentive_parameter(param_id):
     """Delete an incentive parameter"""
     try:
-        parameter = IncentiveParameter.query.get_or_404(param_id)
+        parameter = IncentiveParameter.query.get(param_id)
+        if not parameter:
+            return jsonify({'error': 'Parameter not found'}), 404
+            
         db.session.delete(parameter)
         db.session.commit()
         
-        return jsonify({'message': 'Parameter deleted successfully'}), 200
+        return '', 204
         
     except Exception as e:
         db.session.rollback()
@@ -1498,7 +1565,7 @@ def calculate_bonus():
         
         # Get team incentive parameters for the specific quarter and year
         team_params = IncentiveParameter.query.filter_by(
-            team_id=employee.team_id,
+            team=employee.team.name,
             is_active=True,
             quarter=quarter,
             year=year
@@ -1810,7 +1877,7 @@ def get_uploaded_team_data(team_id):
         quarter = request.args.get('quarter', f'Q{(current_date.month - 1) // 3 + 1}')
         year = request.args.get('year', str(current_date.year))
         
-        if team.name.lower() == 'legal team':
+        if team.name.lower() == 'legal':
             data = LegalTeamData.query.filter_by(quarter=quarter, year=year).all()
             team_data = [{
                 'legal_manager': d.legal_manager,
@@ -1852,6 +1919,30 @@ def get_uploaded_team_data(team_id):
         }), 200
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/seed-teams', methods=['POST'])
+def seed_teams():
+    """Seed initial teams"""
+    try:
+        # Check if teams already exist
+        if Team.query.count() > 0:
+            return jsonify({'message': 'Teams already seeded'}), 200
+
+        # Create teams
+        teams = [
+            Team(name='Legal', description='Legal Team'),
+            Team(name='Loan', description='Loan Team'),
+            Team(name='Servicing', description='Servicing Team')
+        ]
+        
+        db.session.add_all(teams)
+        db.session.commit()
+        
+        return jsonify({'message': 'Teams seeded successfully'}), 201
+        
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
